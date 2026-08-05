@@ -219,3 +219,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# pixi environments
+.pixi/*
+!.pixi/config.toml

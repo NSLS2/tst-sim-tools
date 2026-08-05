@@ -60,13 +60,13 @@ Changelog = "https://github.com/NSLS2/tst-sim-tools/releases"
 version.source = "vcs"
 
 [tool.hatch.build]
-artifacts = ["src/tst-sim-tools/_version.py"]
+artifacts = ["src/tst_sim_tools/_version.py"]
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
 
 [tool.hatch.build.hooks.vcs]
-version-file = "src/tst-sim-tools/_version.py"
+version-file = "src/tst_sim_tools/_version.py"
 
 [tool.hatch.version.raw-options]
 local_scheme = "no-local-version"
@@ -112,4 +112,72 @@ convention = "numpy"
 "tests/**/*" = ["SLF001", "S101", "D"]
 
 [tool.importlinter]
-root_package = "tst-sim-tools"
+root_package = "tst_sim_tools"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+tst-sim-tools = { path = ".", editable = true }
+
+[tool.pixi.feature.startup.dependencies]
+bluesky-base = ">=1.15"
+bluesky-queueserver = "*"
+matplotlib-base = ">=3.9.3,<4"
+networkx = ">=3.4.2"
+nslsii = ">=0.11.4"
+numpy = "*"
+ophyd = ">=1.11.0"
+pyepics = "*"
+python = ">=3.12,<3.13"
+semver = ">=3.0.4,<4"
+tiled-client = ">=0.1.6"
+hdf5-external-filter-plugins = ">=0.1.0,<0.2"
+blosc-hdf5-plugin = ">=1.0.1,<2"
+databroker = "==2.0.0"
+epicscorelibs = ">=7.0.7.99.1.1,<8"
+bluesky-tiled-plugins = ">=2.0.0"
+ophyd-async = ">=0.20.1,<0.21"
+
+[tool.pixi.feature.startup-git.pypi-dependencies]
+tst-sim-tools = { git = "https://github.com/NSLS2/tst-sim-tools.git", rev = "main" }
+
+[tool.pixi.feature.startup-local.pypi-dependencies]
+tst-sim-tools = { path = ".", editable = true }
+
+[tool.pixi.feature.terminal.dependencies]
+ipython = "*"
+pyside6 = "*"
+numpy = ">2"
+
+[tool.pixi.feature.qs.dependencies]
+bluesky-queueserver = "*"
+bluesky-httpserver = "*"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+startup-git = { features = [
+  "startup-git",
+  "startup",
+], solve-group = "startup-git", no-default-feature = true }
+startup-local = { features = [
+  "startup-local",
+  "startup",
+], solve-group = "startup-local", no-default-feature = true }
+terminal = { features = [
+  "terminal",
+  "startup-git",
+], solve-group = "startup-git", no-default-feature = true }
+terminal-local = { features = [
+  "terminal",
+  "startup-local",
+], solve-group = "startup-local", no-default-feature = true }
+qs = { features = [
+  "qs",
+  "startup-git",
+], solve-group = "startup-git", no-default-feature = true }
+dev = { features = ["dev"], solve-group = "default" }
+docs = { features = ["docs"], solve-group = "default" }
+
+[tool.pixi.tasks]
