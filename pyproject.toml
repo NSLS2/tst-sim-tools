@@ -167,14 +167,17 @@ startup-local = { features = [
 ], solve-group = "startup-local", no-default-feature = true }
 terminal = { features = [
   "terminal",
+  "startup",
   "startup-git",
 ], solve-group = "startup-git", no-default-feature = true }
 terminal-local = { features = [
   "terminal",
+  "startup",
   "startup-local",
 ], solve-group = "startup-local", no-default-feature = true }
 qs = { features = [
   "qs",
+  "startup",
   "startup-git",
 ], solve-group = "startup-git", no-default-feature = true }
 dev = { features = ["dev"], solve-group = "default" }
