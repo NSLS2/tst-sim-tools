@@ -1047,7 +1047,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/widgetsnbextension-4.0.15-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
-      - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#238fa257d254a308b741a825dbc960e8643374d0
+      - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#892358a495121563e7aeaf7cae87b625cc410ec5
       - pypi: https://files.pythonhosted.org/packages/18/3e/3ea6f20de14037a1d8ebf5b7278b62b4b95ba3a62af1d31d95df1486982e/blop-1.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1b/c7/94409509ade3775b4fe3e2af98c143ffbd8ee9d757f096a970ed191d41b3/moocore-0.3.2-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/24/18/d8544811ab076f876c4892b3714f5b0dad335e1dc33aef826df431b8325d/plotly-6.9.0-py3-none-any.whl
@@ -1700,7 +1700,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zarr-3.3.0-pyhc364b38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
-      - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#238fa257d254a308b741a825dbc960e8643374d0
+      - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#892358a495121563e7aeaf7cae87b625cc410ec5
       - pypi: https://files.pythonhosted.org/packages/18/3e/3ea6f20de14037a1d8ebf5b7278b62b4b95ba3a62af1d31d95df1486982e/blop-1.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1b/c7/94409509ade3775b4fe3e2af98c143ffbd8ee9d757f096a970ed191d41b3/moocore-0.3.2-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/24/18/d8544811ab076f876c4892b3714f5b0dad335e1dc33aef826df431b8325d/plotly-6.9.0-py3-none-any.whl
@@ -2726,7 +2726,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/widgetsnbextension-4.0.15-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
-      - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#238fa257d254a308b741a825dbc960e8643374d0
+      - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#892358a495121563e7aeaf7cae87b625cc410ec5
       - pypi: https://files.pythonhosted.org/packages/18/3e/3ea6f20de14037a1d8ebf5b7278b62b4b95ba3a62af1d31d95df1486982e/blop-1.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1b/c7/94409509ade3775b4fe3e2af98c143ffbd8ee9d757f096a970ed191d41b3/moocore-0.3.2-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/24/18/d8544811ab076f876c4892b3714f5b0dad335e1dc33aef826df431b8325d/plotly-6.9.0-py3-none-any.whl
@@ -13231,9 +13231,9 @@ packages:
   - bluesky>=1.15.1
   - ophyd-async[ca,pva]
   requires_python: '>=3.11,<3.14'
-- pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#238fa257d254a308b741a825dbc960e8643374d0
+- pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#892358a495121563e7aeaf7cae87b625cc410ec5
   name: tst-sim-tools
-  version: 0.1.dev2
+  version: 0.1.dev3
   requires_dist:
   - blop[ax,cpu,queueserver]
   - bluesky>=1.15.1
