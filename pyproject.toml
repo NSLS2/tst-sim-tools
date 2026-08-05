@@ -157,14 +157,6 @@ bluesky-httpserver = "*"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
-startup-git = { features = [
-  "startup-git",
-  "startup",
-], solve-group = "startup-git", no-default-feature = true }
-startup-local = { features = [
-  "startup-local",
-  "startup",
-], solve-group = "startup-local", no-default-feature = true }
 terminal = { features = [
   "terminal",
   "startup",
@@ -183,4 +175,7 @@ qs = { features = [
 dev = { features = ["dev"], solve-group = "default" }
 docs = { features = ["docs"], solve-group = "default" }
 
-[tool.pixi.tasks]
+[tool.pixi.feature.startup-local.tasks]
+start-local = "TILED=0 ipython -i -m tst_sim_tools.startup"
+start-staging = "TILED=1 ipython -i -m tst_sim_tools.startup"
+start = "TILED=2 ipython -i -m tst_sim_tools.startup"
