@@ -110,6 +110,10 @@ convention = "numpy"
 # See https://github.com/DiamondLightSource/python-copier-template/issues/154
 # Remove this line to forbid private member access in tests
 "tests/**/*" = ["SLF001", "S101", "D"]
+"src/tst_sim_tools/startup.py" = [
+  "F401",
+] # Allow unused imports in startup script
+
 
 [tool.importlinter]
 root_package = "tst_sim_tools"
