@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "bluesky-queueserver": {
+      "type": "local",
+      "command": ["pixi", "run", "serve"],
+      "cwd": "../bluesky-queueserver-mcp",
+      "environment": {
+        "QSERVER_HTTP_SERVER_URI": "http://localhost:60610",
+        "QSERVER_HTTP_API_KEY": "secret",
+        "QSERVER_USER_GROUP": "primary"
+      },
+      "enabled": true
+    }
+  },
+  "permission": {
+    "bluesky-queueserver_status": "allow",
+    "bluesky-queueserver_list_plans": "allow",
+    "bluesky-queueserver_list_devices": "allow",
+    "bluesky-queueserver_queue_get": "allow",
+    "bluesky-queueserver_add_plan_to_queue": "ask"
+  }
+}
