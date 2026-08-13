@@ -49,4 +49,4 @@ class XRTWiggler(StandardReadable, EpicsDevice):
     # --- Wiggler magnet ---
     deflection_parameter: Ann[SignalRW[float], PvSuffix("K"), Format.CONFIG_SIGNAL]
     period: Ann[SignalRW[float], PvSuffix("period"), Format.CONFIG_SIGNAL]
-    num_periods: Ann[SignalRW[int], PvSuffix("n"), Format.CONFIG_SIGNAL]
+    num_periods: Ann[SignalRW[float], PvSuffix("n"), Format.CONFIG_SIGNAL]

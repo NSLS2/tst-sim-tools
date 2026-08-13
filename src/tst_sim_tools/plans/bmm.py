@@ -1,21 +1,26 @@
 """Bluesky plans specific to BMM's XRT model."""
 
 import math
+from collections.abc import Sequence
 
+import bluesky.plan_stubs as bps
+import bluesky.preprocessors as bpp
 import numpy as np
-from bluesky import plan_stubs as bps
+from bluesky.protocols import Readable
 from bluesky.utils import MsgGenerator, plan
 
 from ..devices.materials import XRTCrystalMaterial
-from ..devices.monochromators import XRTDCM
+from ..devices.monochromators import BMMSplitXRTDCM
 from ..devices.sources import XRTWiggler
 
 HC_EV_ANGSTROM = 12398.419297617678
 BMM_BEAM_INCLINATION = 0.00700
 BMM_DCM_FIXED_EXIT = 30.0
+BMM_DCM_CRYSTAL_1_CENTER_Y = 26105.0
+BMM_DCM_CRYSTAL_1_CENTER_Z = 91.70508948725096
 
-# Generated from bmm_improved.xml with xrt==2.0.0b1 by loading the XML BeamLine
-# and sampling -DCM.material.get_dtheta(energy). Values are radians.
+# Generated from bmm_split_dcm.xml with xrt==2.0.0b1 by loading the XML BeamLine
+# and sampling -Si111.get_dtheta(energy). Values are radians.
 BMM_DCM_REFRACTION_CORRECTION: tuple[tuple[float, float], ...] = (
     (4500.0, 6.2087424660813571e-05),
     (5000.0, 5.4590825791400793e-05),
@@ -85,7 +90,7 @@ def dcm_refraction_correction(energy_ev: float) -> float:
 @plan
 def change_energy_stub(
     tpw: XRTWiggler,
-    dcm: XRTDCM,
+    dcm: BMMSplitXRTDCM,
     crystal: XRTCrystalMaterial,
     energy: float,
     band: float = 20.0,
@@ -103,15 +108,42 @@ def change_energy_stub(
         energy + band / 2.0,
     )
 
-    lattice_spacing = float((yield from bps.rd(crystal.lattice_spacing)))
-    bragg_offset = float((yield from bps.rd(dcm.bragg_offset)))
+    lattice_spacing = yield from bps.rd(crystal.lattice_spacing, default_value=1.0)
     bragg = bragg_angle(energy, lattice_spacing)
-    bragg += dcm_refraction_correction(energy) + BMM_BEAM_INCLINATION + bragg_offset
+    bragg += dcm_refraction_correction(energy) + BMM_BEAM_INCLINATION
 
+    crystal_2_perp_translation = BMM_DCM_FIXED_EXIT / (2.0 * math.cos(bragg))
+    crystal_1_center_y = yield from bps.rd(dcm.crystal_1.center_y, default_value=BMM_DCM_CRYSTAL_1_CENTER_Y)
+    crystal_1_center_z = yield from bps.rd(dcm.crystal_1.center_z, default_value=BMM_DCM_CRYSTAL_1_CENTER_Z)
     yield from bps.mv(
-        dcm.bragg,
+        dcm.crystal_1.pitch,
         bragg,
-        dcm.crystal_2_perp_translation,
-        BMM_DCM_FIXED_EXIT / (2.0 * math.cos(bragg)),
+        dcm.crystal_2.pitch,
+        -bragg,
+        dcm.crystal_2.center_y,
+        crystal_1_center_y - crystal_2_perp_translation * math.sin(bragg),
+        dcm.crystal_2.center_z,
+        crystal_1_center_z + crystal_2_perp_translation * math.cos(bragg),
     )
     return bragg
+
+
+@plan
+def scan_energy(
+    detectors: Sequence[Readable],
+    tpw: XRTWiggler,
+    dcm: BMMSplitXRTDCM,
+    crystal: XRTCrystalMaterial,
+    energies: Sequence[float],
+    band: float = 20.0,
+) -> MsgGenerator[None]:
+    """Scan energy range and trigger + read detectors."""
+
+    @bpp.stage_decorator(detectors)
+    @bpp.run_decorator(md={})
+    def _inner_scan():
+        for energy in energies:
+            yield from change_energy_stub(tpw, dcm, crystal, energy, band=band)
+            yield from bps.trigger_and_read(detectors)
+
+    return (yield from _inner_scan())

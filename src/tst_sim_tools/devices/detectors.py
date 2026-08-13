@@ -31,24 +31,17 @@ class XRTScreenAcquireStatus(StrictEnum):
     ERROR = "Error"
 
 
-class CaprotoBinary(StrictEnum):
-    """Default options for binary PVs in caproto."""
-
-    OFF = "Off"
-    ON = "On"
-
-
 class XRTScreenIO(EpicsDevice):
     """EPICS signals for an XRT screen."""
 
     # --- Acquisition control ---
-    acquire: Ann[SignalRW[CaprotoBinary], PvSuffix("Acquire")]
+    acquire: Ann[SignalRW[bool], PvSuffix("Acquire")]
     acquire_status: Ann[SignalRW[XRTScreenAcquireStatus], PvSuffix("AcquireStatus")]
     num_images: Ann[SignalRW[int], PvSuffix("NumImages")]
     # TODO: image: Ann[SignalRW, PvSuffix("Image")]
 
     # --- File writing ---
-    capture: Ann[SignalRW[CaprotoBinary], PvSuffix("Capture")]
+    capture: Ann[SignalRW[bool], PvSuffix("Capture")]
     file_path: Ann[SignalRW[str], PvSuffix("FilePath")]
     file_name: Ann[SignalRW[str], PvSuffix("FileName")]
     frames_written: Ann[SignalR[int], PvSuffix("FramesWritten")]
@@ -91,7 +84,7 @@ class XRTScreenHDFDataLogic(DetectorDataLogic):
             self.driver.file_path.set(str(path_info.directory_path)),
             self.driver.file_name.set(f"{path_info.filename}.h5"),
         )
-        await self.driver.capture.set(CaprotoBinary.ON)
+        await self.driver.capture.set(True)
 
         return StreamResourceDataProvider(
             uri=f"{path_info.directory_uri}{path_info.filename}.h5",
@@ -110,7 +103,7 @@ class XRTScreenHDFDataLogic(DetectorDataLogic):
         )
 
     async def stop(self) -> None:
-        await self.driver.capture.set(CaprotoBinary.OFF)
+        await self.driver.capture.set(False)
 
     def get_hinted_fields(self, datakey_name: str) -> Sequence[str]:
         return [datakey_name]
@@ -125,7 +118,7 @@ class XRTScreenAcquireLogic(DetectorAcquireLogic):
 
     async def start_acquiring(self):
         """Start the detector acquiring."""
-        await self.driver.acquire.set(CaprotoBinary.ON)
+        await self.driver.acquire.set(True)
 
     async def wait_for_idle(self):
         """Wait for the detector to return to idle after the final collection."""
@@ -142,7 +135,7 @@ class XRTScreenAcquireLogic(DetectorAcquireLogic):
 
         Called from `unstage()`.
         """
-        await self.driver.acquire.set(CaprotoBinary.OFF)
+        await self.driver.acquire.set(False)
 
 
 class XRTScreenDetector(StandardDetector):

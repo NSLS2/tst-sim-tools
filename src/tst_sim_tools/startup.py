@@ -4,7 +4,7 @@ import os
 from enum import IntEnum
 from pathlib import PurePath
 
-import ophyd_async.epics.core._aioca as _ophyd_aioca
+import ophyd_async.epics.core._aioca as _ophyd_aioca  # noqa: PLC2701
 from bluesky import RunEngine
 from bluesky.callbacks.best_effort import BestEffortCallback
 from bluesky.plan_stubs import mv, rd
@@ -15,14 +15,14 @@ from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
 from tst_sim_tools.devices.detectors import XRTScreenDetector
 from tst_sim_tools.devices.materials import XRTCrystalMaterial
 from tst_sim_tools.devices.mirrors import XRTToroidMirror
-from tst_sim_tools.devices.monochromators import XRTDCM
+from tst_sim_tools.devices.monochromators import BMMSplitXRTDCM
 from tst_sim_tools.devices.sources import XRTWiggler
-from tst_sim_tools.plans.bmm import change_energy_stub
+from tst_sim_tools.plans.bmm import change_energy_stub, scan_energy
 
 # FIXME:
 # RunEngine imports pyepics. Reusing pyepics' CA context makes
 # aioca/ophyd-async signal connections time out against caproto IOCs.
-_ophyd_aioca._use_pyepics_context_if_imported = lambda: None
+_ophyd_aioca._use_pyepics_context_if_imported = lambda: None  # noqa: SLF001
 
 RE = RunEngine({})
 
@@ -69,8 +69,8 @@ with init_devices():
         "XF:31ID1-XRT{BMM:01}TPW:",
         name="tpw",
     )
-    dcm = XRTDCM(
-        "XF:31ID1-XRT{BMM:01}DCM:",
+    dcm = BMMSplitXRTDCM(
+        "XF:31ID1-XRT{BMM:01}",
         name="dcm",
     )
     si111 = XRTCrystalMaterial(
