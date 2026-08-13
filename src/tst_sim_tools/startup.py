@@ -15,7 +15,7 @@ from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
 from tst_sim_tools.devices.detectors import XRTScreenDetector
 from tst_sim_tools.devices.materials import XRTCrystalMaterial
 from tst_sim_tools.devices.mirrors import XRTToroidMirror
-from tst_sim_tools.devices.monochromators import BMMSplitXRTDCM
+from tst_sim_tools.devices.monochromators import XRTSplitDCM
 from tst_sim_tools.devices.sources import XRTWiggler
 from tst_sim_tools.plans.bmm import change_energy_stub, scan_energy
 
@@ -69,7 +69,7 @@ with init_devices():
         "XF:31ID1-XRT{BMM:01}TPW:",
         name="tpw",
     )
-    dcm = BMMSplitXRTDCM(
+    dcm = XRTSplitDCM(
         "XF:31ID1-XRT{BMM:01}",
         name="dcm",
     )

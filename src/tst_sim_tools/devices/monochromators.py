@@ -7,8 +7,8 @@ from ophyd_async.core import StandardReadableFormat as Format
 from ophyd_async.epics.core import EpicsDevice, PvSuffix
 
 
-class XRTDCMCrystal(StandardReadable, EpicsDevice):
-    """One physical crystal optic in the split XRT DCM model."""
+class XRTOpticalElement(StandardReadable, EpicsDevice):
+    """One physical crystal optic."""
 
     # --- Physical pose ---
     center_x: Ann[SignalRW[float], PvSuffix("center:x"), Format.CONFIG_SIGNAL]
@@ -29,11 +29,8 @@ class XRTDCMCrystal(StandardReadable, EpicsDevice):
     shape: Ann[SignalR[str], PvSuffix("shape"), Format.CONFIG_SIGNAL]
 
 
-class BMMSplitXRTDCM(StandardReadable):
+class XRTSplitDCM(StandardReadable, EpicsDevice):
     """BMM DCM as two independently posed XRT crystal optical elements."""
 
-    def __init__(self, prefix: str, name: str = "") -> None:
-        with self.add_children_as_readables():
-            self.crystal_1 = XRTDCMCrystal(f"{prefix}DCM_C1:")
-            self.crystal_2 = XRTDCMCrystal(f"{prefix}DCM_C2:")
-        super().__init__(name=name)
+    crystal_1: Ann[XRTOpticalElement, PvSuffix("DCM_C1:")]
+    crystal_2: Ann[XRTOpticalElement, PvSuffix("DCM_C2:")]

@@ -10,7 +10,7 @@ from bluesky.protocols import Readable
 from bluesky.utils import MsgGenerator, plan
 
 from ..devices.materials import XRTCrystalMaterial
-from ..devices.monochromators import BMMSplitXRTDCM
+from ..devices.monochromators import XRTSplitDCM
 from ..devices.sources import XRTWiggler
 
 HC_EV_ANGSTROM = 12398.419297617678
@@ -21,6 +21,7 @@ BMM_DCM_CRYSTAL_1_CENTER_Z = 91.70508948725096
 
 # Generated from bmm_split_dcm.xml with xrt==2.0.0b1 by loading the XML BeamLine
 # and sampling -Si111.get_dtheta(energy). Values are radians.
+# Sampling like this is realistic :)
 BMM_DCM_REFRACTION_CORRECTION: tuple[tuple[float, float], ...] = (
     (4500.0, 6.2087424660813571e-05),
     (5000.0, 5.4590825791400793e-05),
@@ -90,7 +91,7 @@ def dcm_refraction_correction(energy_ev: float) -> float:
 @plan
 def change_energy_stub(
     tpw: XRTWiggler,
-    dcm: BMMSplitXRTDCM,
+    dcm: XRTSplitDCM,
     crystal: XRTCrystalMaterial,
     energy: float,
     band: float = 20.0,
@@ -132,7 +133,7 @@ def change_energy_stub(
 def scan_energy(
     detectors: Sequence[Readable],
     tpw: XRTWiggler,
-    dcm: BMMSplitXRTDCM,
+    dcm: XRTSplitDCM,
     crystal: XRTCrystalMaterial,
     energies: Sequence[float],
     band: float = 20.0,
