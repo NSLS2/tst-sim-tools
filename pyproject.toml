@@ -187,7 +187,7 @@ start-staging = "TILED=1 ipython -i -m tst_sim_tools.startup"
 start = "TILED=2 ipython -i -m tst_sim_tools.startup"
 
 [tool.pixi.feature.qs.tasks]
-qs-server = """
+qs-server-local = """
 start-re-manager \
 --redis-addr localhost:6379 \
 --zmq-control-addr tcp://127.0.0.1:60615 \
@@ -197,7 +197,7 @@ start-re-manager \
 --user-group-permissions /tmp/bsqs \
 --existing-plans-devices /tmp/bsqs
 """
-http-server = """
+http-server-local = """
 QSERVER_ZMQ_CONTROL_ADDRESS=tcp://localhost:60615 \
 QSERVER_ZMQ_INFO_ADDRESS=tcp://localhost:60625 \
 QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
