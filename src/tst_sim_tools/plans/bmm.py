@@ -91,6 +91,11 @@ def change_energy_stub(
     band: float = 20.0,
 ) -> MsgGenerator[float]:
     """Change source energy band and retune the fixed-exit DCM."""
+    if not 6000 <= energy <= 8000:
+        raise ValueError(
+            "Current XRT model represents BMM Mode C, valid for 6-8 keV focused at XAS. This plan assumes only Mode C."
+        )
+
     yield from bps.mv(
         tpw.min_energy,
         energy - band / 2.0,
