@@ -40,9 +40,9 @@ def build_agent(
 ) -> Agent:
     """Build an agent that optimizes lateral position error and fwhm of the beam."""
     dofs = [
-        RangeDOF(actuator=dcm_c2_roll, bounds=(-2.0, 2.0), parameter_type="float"),
-        RangeDOF(actuator=tfm_yaw, bounds=(-2.0, 2.0), parameter_type="float"),
-        RangeDOF(actuator=tfm_lateral, bounds=(-2.0, 2.0), parameter_type="float"),
+        RangeDOF(actuator=dcm_c2_roll, bounds=(-1e-4, 1e-4), parameter_type="float"),
+        RangeDOF(actuator=tfm_yaw, bounds=(-2.5e-4, 2.5e-4), parameter_type="float"),
+        RangeDOF(actuator=tfm_lateral, bounds=(-0.5, 0.5), parameter_type="float"),
     ]
 
     objectives = [
