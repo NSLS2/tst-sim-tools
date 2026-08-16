@@ -30,6 +30,7 @@ dependencies = [
   "bluesky>=1.15.1",
   "ophyd-async[ca,pva]",
   "blop[cpu,ax,queueserver]",
+  "scipy>=1.14",
   "xrt==2.0.0b1",
 ]
 

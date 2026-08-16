@@ -12872,6 +12872,7 @@ packages:
   - blop[ax,cpu,queueserver]
   - bluesky>=1.15.1
   - ophyd-async[ca,pva]
+  - scipy>=1.14
   - xrt==2.0.0b1
   requires_python: '>=3.11,<3.14'
 - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#892358a495121563e7aeaf7cae87b625cc410ec5
