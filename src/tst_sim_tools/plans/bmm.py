@@ -10,8 +10,9 @@ import bluesky.plans as bp
 import bluesky.preprocessors as bpp
 import numpy as np
 from blop.plans import default_acquire
+from blop.protocols import Actuator, Sensor
 from bluesky.plan_stubs import TakeReading
-from bluesky.protocols import Actuator, Readable, Reading, Sensor
+from bluesky.protocols import Readable, Reading
 from bluesky.utils import MsgGenerator, plan
 
 from ..devices.materials import XRTCrystalSi
@@ -172,7 +173,7 @@ def acquire_with_energy_scan(
     dcm_c2: XRTOpticalElement,
     crystal: XRTCrystalSi,
     energies: Sequence[float],
-    band: float,
+    band: float = 1.0,
 ) -> MsgGenerator[str]:
     """Move to suggestions, then take an energy scan."""
     take_reading = cast(

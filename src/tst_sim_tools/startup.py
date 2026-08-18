@@ -22,6 +22,7 @@ from tst_sim_tools.devices.sources import XRTWiggler
 from tst_sim_tools.plans.bmm import (
     change_energy_stub,
     scan_energy,
+    acquire_with_energy_scan,
 )
 
 # FIXME:
@@ -59,11 +60,6 @@ else:
 
 tw = TiledWriter(client)
 RE.subscribe(tw)
-
-# --- Callback setup ---
-bec = BestEffortCallback()
-RE.subscribe(bec)
-
 
 path = PurePath("/tmp/tst_testing")
 path_provider = YMDPathProvider(UUIDFilenameProvider(), path)

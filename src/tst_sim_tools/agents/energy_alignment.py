@@ -18,12 +18,14 @@ from ..devices.mirrors import XRTOpticalElement
 from ..devices.sources import XRTWiggler
 from ..plans.bmm import acquire_with_energy_scan
 
+ALIGNMENT_SCORE = "alignment_score"
+CENTROID_RMS_ERROR = "centroid_rms_error"
+MAX_CENTROID_ERROR = "max_centroid_error"
+CENTROID_SPAN = "centroid_span"
 LATERAL_POSITION_ERROR = "lateral_position_error"
-FWHM = "fwhm"
-LATERAL_POSITION_RANGE = "lateral_position_range"
 VERTICAL_POSITION_ERROR = "vertical_position_error"
+FWHM = "fwhm"
 MAX_FWHM = "max_fwhm"
-MEAN_INTENSITY = "mean_intensity"
 MIN_INTENSITY = "min_intensity"
 DEFAULT_IMAGE_THRESHOLD = 0.02
 DEFAULT_IMAGE_BLUR = 1.0
@@ -31,6 +33,10 @@ BMM_ENERGY_ALIGNMENT_REFERENCE_ENERGY = 7112.0
 BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL = 5e-5
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL = 0.33
 BMM_ENERGY_ALIGNMENT_TFM_YAW = 0.0
+BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-2.5e-5, 7.5e-5)
+BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-1e-4, 1e-4)
+BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS = (-0.05, 0.45)
+BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET = 12
 
 
 class EnergyAlignmentEvalutation(EvaluationFunction):
@@ -90,14 +96,22 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             )
             x_error = summary["x_centroid"] - target_x
             y_error = summary["y_centroid"] - target_y
+            centroid_error = np.hypot(x_error, y_error)
+            centroid_rms_error = float(np.sqrt(np.mean(centroid_error**2)))
+            max_centroid_error = float(np.max(centroid_error))
+            fwhm = float(np.mean(summary["fwhm_px"]))
+            centroid_span = float(np.hypot(np.ptp(summary["x_centroid"]), np.ptp(summary["y_centroid"])))
+            alignment_score = centroid_rms_error + 0.25 * max_centroid_error + 0.1 * centroid_span + 0.1 * fwhm
             outcomes.append(
                 {
+                    ALIGNMENT_SCORE: alignment_score,
+                    CENTROID_RMS_ERROR: centroid_rms_error,
+                    MAX_CENTROID_ERROR: max_centroid_error,
+                    CENTROID_SPAN: centroid_span,
                     LATERAL_POSITION_ERROR: float(np.sqrt(np.mean(x_error**2))),
-                    LATERAL_POSITION_RANGE: float(np.ptp(summary["x_centroid"])),
                     VERTICAL_POSITION_ERROR: float(np.sqrt(np.mean(y_error**2))),
-                    FWHM: float(np.mean(summary["fwhm_px"])),
+                    FWHM: fwhm,
                     MAX_FWHM: float(np.max(summary["fwhm_px"])),
-                    MEAN_INTENSITY: float(np.mean(summary["total"])),
                     MIN_INTENSITY: float(np.min(summary["total"])),
                     "_id": sid,
                 }
@@ -167,21 +181,15 @@ async def build_agent(
         tfm_lateral.set(BMM_ENERGY_ALIGNMENT_TFM_LATERAL),
         tfm_yaw.set(BMM_ENERGY_ALIGNMENT_TFM_YAW),
     )
-    init_roll, init_yaw, init_lat = await asyncio.gather(
-        dcm_c2.roll.get_value(),
-        tfm_yaw.get_value(),
-        tfm_lateral.get_value(),
-    )
 
     dofs = [
-        RangeDOF(actuator=dcm_c2.roll, bounds=(init_roll - 1e-4, init_roll + 1e-4), parameter_type="float"),
-        RangeDOF(actuator=tfm_yaw, bounds=(init_yaw - 2.5e-4, init_yaw + 2.5e-4), parameter_type="float"),
-        RangeDOF(actuator=tfm_lateral, bounds=(init_lat - 0.5, init_lat + 0.5), parameter_type="float"),
+        RangeDOF(actuator=dcm_c2.roll, bounds=BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS, parameter_type="float"),
+        RangeDOF(actuator=tfm_yaw, bounds=BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS, parameter_type="float"),
+        RangeDOF(actuator=tfm_lateral, bounds=BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS, parameter_type="float"),
     ]
 
     objectives = [
-        Objective(name=LATERAL_POSITION_ERROR, minimize=True),
-        Objective(name=FWHM, minimize=True),
+        Objective(name=ALIGNMENT_SCORE, minimize=True),
     ]
 
     acquisition_plan = cast(
@@ -214,6 +222,7 @@ async def build_agent(
     )
     agent.ax_client.configure_generation_strategy(
         method="fast",
+        initialization_budget=BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET,
         initialize_with_center=False,
     )
 
