@@ -19,6 +19,16 @@ Do not use this skill to submit plans or control the queue. State-changing opera
 - Use read-only endpoints to inspect state, discover names/signatures, map queue items to completed runs, and diagnose failures.
 - Do not construct `BPlan` objects in read-only helper code; writable queue composition belongs in MCP-mediated tooling.
 
+
+## Project-Local Queue Server Defaults
+
+- Start the local Queue Server manager with `pixi run -e qs qs-server-local`.
+- Start the matching HTTP server with `pixi run -e qs http-server-local`.
+- The local HTTP endpoint is `http://localhost:60610`.
+- The manager task points at Redis `localhost:6379`, ZMQ control `tcp://127.0.0.1:60615`, and ZMQ info `tcp://127.0.0.1:60625`.
+- Permissions plus generated allowed-plan/device files are written under `/tmp/bsqs`.
+- The local HTTP server is configured with single-user API key `secret`; keep reusable read-only helpers configurable via `QSERVER_READONLY_API_KEY` instead of hard-coding that writable/local key.
+
 ## Connect Over HTTP
 
 ```python
