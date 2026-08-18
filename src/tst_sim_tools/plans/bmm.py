@@ -1,12 +1,17 @@
 """Bluesky plans specific to BMM's XRT model."""
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from functools import partial
+from typing import Any, cast
 
 import bluesky.plan_stubs as bps
+import bluesky.plans as bp
 import bluesky.preprocessors as bpp
 import numpy as np
-from bluesky.protocols import Readable
+from blop.plans import default_acquire
+from bluesky.plan_stubs import TakeReading
+from bluesky.protocols import Actuator, Readable, Reading, Sensor
 from bluesky.utils import MsgGenerator, plan
 
 from ..devices.materials import XRTCrystalSi
@@ -18,6 +23,7 @@ BMM_BEAM_INCLINATION = 0.00700
 BMM_DCM_FIXED_EXIT = 30.0
 BMM_DCM_CRYSTAL_1_CENTER_Y = 26105.0
 BMM_DCM_CRYSTAL_1_CENTER_Z = 91.70508948725096
+
 
 # Generated from bmm_split_dcm.xml with xrt==2.0.0b1 by loading the XML BeamLine
 # and sampling -Si111.get_dtheta(energy). Values are radians.
@@ -130,6 +136,59 @@ def change_energy_stub(
         crystal_1_center_z + crystal_2_perp_translation * math.cos(bragg),
     )
     return bragg
+
+
+@plan
+def energy_scan_take_reading(
+    detectors: Sequence[Readable],
+    *,
+    tpw: XRTWiggler,
+    dcm_c1: XRTOpticalElement,
+    dcm_c2: XRTOpticalElement,
+    crystal: XRTCrystalSi,
+    energies: Sequence[float],
+    band: float,
+) -> MsgGenerator[Mapping[str, Reading]]:
+    """Retune energy and trigger/read detectors at each requested energy."""
+    if not energies:
+        raise ValueError("Expected at least one energy for energy-scan acquisition")
+
+    readings: Mapping[str, Reading] = {}
+    for energy in energies:
+        yield from change_energy_stub(tpw, dcm_c1, dcm_c2, crystal, energy, band=band)
+        readings = yield from bps.trigger_and_read(list(detectors))
+    return readings
+
+
+@plan
+def acquire_with_energy_scan(
+    suggestions: list[dict],
+    actuators: Sequence[Actuator],
+    sensors: Sequence[Sensor] | None = None,
+    md: dict[str, Any] | None = None,
+    *,
+    tpw: XRTWiggler,
+    dcm_c1: XRTOpticalElement,
+    dcm_c2: XRTOpticalElement,
+    crystal: XRTCrystalSi,
+    energies: Sequence[float],
+    band: float,
+) -> MsgGenerator[str]:
+    """Move to suggestions, then take an energy scan."""
+    take_reading = cast(
+        TakeReading,
+        partial(
+            energy_scan_take_reading,
+            tpw=tpw,
+            dcm_c1=dcm_c1,
+            dcm_c2=dcm_c2,
+            crystal=crystal,
+            energies=tuple(float(e) for e in energies),
+            band=band,
+        ),
+    )
+    per_step = cast(bp.PerStep, partial(bps.one_nd_step, take_reading=take_reading))
+    return (yield from default_acquire(suggestions, actuators, sensors, per_step=per_step))
 
 
 @plan

@@ -19,7 +19,10 @@ from tst_sim_tools.devices.materials import XRTCrystalSi
 from tst_sim_tools.devices.mirrors import XRTOpticalElement, XRTParabolicalMirror, XRTToroidMirror
 from tst_sim_tools.devices.slits import XRTRectangularAperature
 from tst_sim_tools.devices.sources import XRTWiggler
-from tst_sim_tools.plans.bmm import change_energy_stub, scan_energy
+from tst_sim_tools.plans.bmm import (
+    change_energy_stub,
+    scan_energy,
+)
 
 # FIXME:
 # RunEngine imports pyepics. Reusing pyepics' CA context makes
