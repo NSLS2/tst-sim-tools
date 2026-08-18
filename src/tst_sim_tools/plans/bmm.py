@@ -95,7 +95,7 @@ def change_energy_stub(
     dcm_c2: XRTOpticalElement,
     crystal: XRTCrystalSi,
     energy: float,
-    band: float = 20.0,
+    band: float = 1.0,
 ) -> MsgGenerator[float]:
     """Change source energy band and retune the fixed-exit DCM."""
     if not 6000 <= energy <= 8000:
@@ -140,7 +140,7 @@ def scan_energy(
     dcm_c2: XRTOpticalElement,
     crystal: XRTCrystalSi,
     energies: Sequence[float],
-    band: float = 20.0,
+    band: float = 1.0,
 ) -> MsgGenerator[None]:
     """Scan energy range and trigger + read detectors."""
 
