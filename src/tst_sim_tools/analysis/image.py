@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 from numpy.typing import ArrayLike
 from scipy import ndimage, signal
 
@@ -149,6 +150,86 @@ def preprocess(
     return gaussian_blur(processed, sigma=blur)
 
 
+def scroll_images(
+    images: ArrayLike,
+    *,
+    threshold: float = 0.0,
+    blur: float = 0.0,
+    cmap: str = "viridis",
+    show: bool = True,
+) -> Figure:
+    """Scroll through raw and processed detector images side-by-side.
+
+    Parameters
+    ----------
+    images
+        Detector image stack accepted by :func:`image_series`.
+    threshold
+        Fraction of peak intensity to retain in the processed image.
+    blur
+        Gaussian denoising blur sigma in pixels for the processed image.
+    cmap
+        Matplotlib colormap name for both images.
+    show
+        Whether to display the interactive figure before returning it.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure with a scroll-wheel callback that advances through the image stack.
+    """
+    stack = image_series(images)
+    frame_count = stack.shape[0]
+    state = {"index": 0}
+
+    def frame_pair(index: int) -> tuple[np.ndarray, np.ndarray]:
+        raw = stack[index]
+        return raw, preprocess(raw, threshold=threshold, blur=blur)
+
+    def image_limits(raw: np.ndarray, processed: np.ndarray) -> tuple[float, float]:
+        minimum = min(float(raw.min()), float(processed.min()))
+        maximum = max(float(raw.max()), float(processed.max()))
+        return (minimum, maximum) if minimum < maximum else (minimum, minimum + 1.0)
+
+    fig, axs = plt.subplots(1, 2, figsize=(10, 4.5), constrained_layout=True)
+    raw_ax, processed_ax = axs
+    for ax in axs:
+        ax.set_axis_off()
+
+    raw, processed = frame_pair(state["index"])
+    vmin, vmax = image_limits(raw, processed)
+    raw_artist = raw_ax.imshow(raw, cmap=cmap, vmin=vmin, vmax=vmax)
+    processed_artist = processed_ax.imshow(processed, cmap=cmap, vmin=vmin, vmax=vmax)
+    raw_ax.set_title("Raw")
+    processed_ax.set_title(f"Processed (threshold={threshold:g}, blur={blur:g})")
+
+    def update(index: int) -> None:
+        state["index"] = index % frame_count
+        raw, processed = frame_pair(state["index"])
+        vmin, vmax = image_limits(raw, processed)
+        raw_artist.set_data(raw)
+        processed_artist.set_data(processed)
+        raw_artist.set_clim(vmin, vmax)
+        processed_artist.set_clim(vmin, vmax)
+        fig.suptitle(f"Image {state['index'] + 1} / {frame_count}; scroll to change frame")
+        fig.canvas.draw_idle()
+
+    def on_scroll(event: object) -> None:
+        step = getattr(event, "step", 0)
+        if step == 0:
+            button = getattr(event, "button", None)
+            step = 1 if button == "up" else -1 if button == "down" else 0
+        if step != 0:
+            update(state["index"] + (1 if step > 0 else -1))
+
+    update(state["index"])
+    fig.canvas.mpl_connect("scroll_event", on_scroll)
+    if show:
+        plt.show()
+
+    return fig
+
+
 def locate_centroid(image: ArrayLike) -> tuple[float, float]:
     """Find the intensity-weighted centroid of a beam image.
 
@@ -194,24 +275,19 @@ def analyze_image(
     """
     processed = preprocess(image, threshold=threshold, blur=blur)
     height, width = processed.shape
-    center_x = (width - 1) / 2.0
-    center_y = (height - 1) / 2.0
+    center_x = width
+    center_y = height
     total = float(processed.sum())
     peak = float(processed.max())
     if total <= 0.0:
-        x_centroid = center_x
-        y_centroid = center_y
-        x_sigma = float(width)
-        y_sigma = float(height)
-        x_fwhm = float(width)
-        y_fwhm = float(height)
-    else:
-        x_centroid, y_centroid = locate_centroid(processed)
-        yy, xx = np.indices(processed.shape)
-        x_sigma = float(np.sqrt((processed * (xx - x_centroid) ** 2).sum() / total))
-        y_sigma = float(np.sqrt((processed * (yy - y_centroid) ** 2).sum() / total))
-        x_fwhm = fwhm(processed.sum(axis=0))
-        y_fwhm = fwhm(processed.sum(axis=1))
+        raise RuntimeError("No beam captured by detector screen")
+
+    x_centroid, y_centroid = locate_centroid(processed)
+    yy, xx = np.indices(processed.shape)
+    x_sigma = float(np.sqrt((processed * (xx - x_centroid) ** 2).sum() / total))
+    y_sigma = float(np.sqrt((processed * (yy - y_centroid) ** 2).sum() / total))
+    x_fwhm = fwhm(processed.sum(axis=0))
+    y_fwhm = fwhm(processed.sum(axis=1))
 
     return {
         "total": total,

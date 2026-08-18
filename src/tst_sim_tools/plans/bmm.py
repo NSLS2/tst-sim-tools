@@ -9,8 +9,8 @@ import numpy as np
 from bluesky.protocols import Readable
 from bluesky.utils import MsgGenerator, plan
 
-from ..devices.materials import XRTCrystalMaterial
-from ..devices.monochromators import XRTSplitDCM
+from ..devices.materials import XRTCrystalSi
+from ..devices.mirrors import XRTOpticalElement
 from ..devices.sources import XRTWiggler
 
 HC_EV_ANGSTROM = 12398.419297617678
@@ -91,8 +91,9 @@ def dcm_refraction_correction(energy_ev: float) -> float:
 @plan
 def change_energy_stub(
     tpw: XRTWiggler,
-    dcm: XRTSplitDCM,
-    crystal: XRTCrystalMaterial,
+    dcm_c1: XRTOpticalElement,
+    dcm_c2: XRTOpticalElement,
+    crystal: XRTCrystalSi,
     energy: float,
     band: float = 20.0,
 ) -> MsgGenerator[float]:
@@ -112,18 +113,20 @@ def change_energy_stub(
     lattice_spacing = yield from bps.rd(crystal.lattice_spacing, default_value=1.0)
     bragg = bragg_angle(energy, lattice_spacing)
     bragg += dcm_refraction_correction(energy) + BMM_BEAM_INCLINATION
+    dcm_c1_fixed_pitch = yield from bps.rd(dcm_c1.fixed_pitch)
+    dcm_c2_fixed_pitch = yield from bps.rd(dcm_c2.fixed_pitch)
 
     crystal_2_perp_translation = BMM_DCM_FIXED_EXIT / (2.0 * math.cos(bragg))
-    crystal_1_center_y = yield from bps.rd(dcm.crystal_1.center_y, default_value=BMM_DCM_CRYSTAL_1_CENTER_Y)
-    crystal_1_center_z = yield from bps.rd(dcm.crystal_1.center_z, default_value=BMM_DCM_CRYSTAL_1_CENTER_Z)
+    crystal_1_center_y = yield from bps.rd(dcm_c1.center_y, default_value=BMM_DCM_CRYSTAL_1_CENTER_Y)
+    crystal_1_center_z = yield from bps.rd(dcm_c1.center_z, default_value=BMM_DCM_CRYSTAL_1_CENTER_Z)
     yield from bps.mv(
-        dcm.crystal_1.pitch,
-        bragg,
-        dcm.crystal_2.pitch,
-        -bragg,
-        dcm.crystal_2.center_y,
+        dcm_c1.pitch,
+        bragg - dcm_c1_fixed_pitch,
+        dcm_c2.pitch,
+        -bragg - dcm_c2_fixed_pitch,
+        dcm_c2.center_y,
         crystal_1_center_y - crystal_2_perp_translation * math.sin(bragg),
-        dcm.crystal_2.center_z,
+        dcm_c2.center_z,
         crystal_1_center_z + crystal_2_perp_translation * math.cos(bragg),
     )
     return bragg
@@ -133,8 +136,9 @@ def change_energy_stub(
 def scan_energy(
     detectors: Sequence[Readable],
     tpw: XRTWiggler,
-    dcm: XRTSplitDCM,
-    crystal: XRTCrystalMaterial,
+    dcm_c1: XRTOpticalElement,
+    dcm_c2: XRTOpticalElement,
+    crystal: XRTCrystalSi,
     energies: Sequence[float],
     band: float = 20.0,
 ) -> MsgGenerator[None]:
@@ -144,7 +148,7 @@ def scan_energy(
     @bpp.run_decorator(md={})
     def _inner_scan():
         for energy in energies:
-            yield from change_energy_stub(tpw, dcm, crystal, energy, band=band)
+            yield from change_energy_stub(tpw, dcm_c1, dcm_c2, crystal, energy, band=band)
             yield from bps.trigger_and_read(detectors)
 
     return (yield from _inner_scan())

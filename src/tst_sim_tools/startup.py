@@ -4,6 +4,8 @@ import os
 from enum import IntEnum
 from pathlib import PurePath
 
+import matplotlib.pyplot as plt
+import numpy as np
 import ophyd_async.epics.core._aioca as _ophyd_aioca  # noqa: PLC2701
 from bluesky import RunEngine
 from bluesky.callbacks.best_effort import BestEffortCallback
@@ -13,9 +15,9 @@ from bluesky_tiled_plugins import TiledWriter
 from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
 
 from tst_sim_tools.devices.detectors import XRTScreenDetector
-from tst_sim_tools.devices.materials import XRTCrystalMaterial
-from tst_sim_tools.devices.mirrors import XRTToroidMirror
-from tst_sim_tools.devices.monochromators import XRTSplitDCM
+from tst_sim_tools.devices.materials import XRTCrystalSi
+from tst_sim_tools.devices.mirrors import XRTOpticalElement, XRTParabolicalMirror, XRTToroidMirror
+from tst_sim_tools.devices.slits import XRTRectangularAperature
 from tst_sim_tools.devices.sources import XRTWiggler
 from tst_sim_tools.plans.bmm import change_energy_stub, scan_energy
 
@@ -65,21 +67,75 @@ path_provider = YMDPathProvider(UUIDFilenameProvider(), path)
 
 # --- BMM XRT Sim ---
 with init_devices():
+    si111 = XRTCrystalSi(
+        "XF:31ID1-XRT{BMM:01}Si111:",
+        name="si111",
+    )
+    si311 = XRTCrystalSi(
+        "XF:31ID1-XRT{BMM:01}Si311:",
+        name="si311",
+    )
     tpw = XRTWiggler(
         "XF:31ID1-XRT{BMM:01}TPW:",
         name="tpw",
     )
-    dcm = XRTSplitDCM(
-        "XF:31ID1-XRT{BMM:01}",
-        name="dcm",
+    fe_mask = XRTRectangularAperature(
+        "XF:31ID1-XRT{BMM:01}FE_MASK:",
+        name="fe_mask",
     )
-    si111 = XRTCrystalMaterial(
-        "XF:31ID1-XRT{BMM:01}Si111:",
-        name="si111",
+    m1 = XRTParabolicalMirror(
+        "XF:31ID1-XRT{BMM:01}M1_VCM:",
+        name="m1",
+    )
+    diag1 = XRTScreenDetector(
+        "XF:31ID1-XRT{BMM:01}Diag1:",
+        datakey_suffix="_image",
+        path_provider=path_provider,
+        name="diag1",
+    )
+    dcm_c1 = XRTOpticalElement(
+        "XF:31ID1-XRT{BMM:01}DCM_C1:",
+        name="dcm_c1",
+    )
+    dcm_c2 = XRTOpticalElement(
+        "XF:31ID1-XRT{BMM:01}DCM_C2:",
+        name="dcm_c2",
+    )
+    pink_beam_stop = XRTRectangularAperature(
+        "XF:31ID1-XRT{BMM:01}PinkBeamStop:",
+        name="pink_beam_stop",
+    )
+    dm2_slits = XRTRectangularAperature(
+        "XF:31ID1-XRT{BMM:01}DM2_Slits:",
+        name="dm2_slits",
+    )
+    diag2 = XRTScreenDetector(
+        "XF:31ID1-XRT{BMM:01}Diag2:",
+        datakey_suffix="_image",
+        path_provider=path_provider,
+        name="diag2",
     )
     m2 = XRTToroidMirror(
         "XF:31ID1-XRT{BMM:01}M2_TFM:",
         name="m2",
+    )
+    m3 = XRTOpticalElement(
+        "XF:31ID1-XRT{BMM:01}M3_HRM:",
+        name="m3",
+    )
+    nano_bpm = XRTScreenDetector(
+        "XF:31ID1-XRT{BMM:01}NANO_BPM:",
+        datakey_suffix="_image",
+        path_provider=path_provider,
+        name="nano_bpm",
+    )
+    beam_shutter = XRTRectangularAperature(
+        "XF:31ID1-XRT{BMM:01}BeamShutter:",
+        name="beam_shutter",
+    )
+    dm3_slits = XRTRectangularAperature(
+        "XF:31ID1-XRT{BMM:01}DM3_Slits:",
+        name="dm3_slits",
     )
     xrd_det = XRTScreenDetector(
         "XF:31ID1-XRT{BMM:01}XRD_SAMPLE:",
@@ -92,22 +148,4 @@ with init_devices():
         datakey_suffix="_image",
         path_provider=path_provider,
         name="xas_det",
-    )
-    nano_bpm = XRTScreenDetector(
-        "XF:31ID1-XRT{BMM:01}NANO_BPM:",
-        datakey_suffix="_image",
-        path_provider=path_provider,
-        name="nano_bpm",
-    )
-    diag1 = XRTScreenDetector(
-        "XF:31ID1-XRT{BMM:01}Diag1:",
-        datakey_suffix="_image",
-        path_provider=path_provider,
-        name="diag1",
-    )
-    diag2 = XRTScreenDetector(
-        "XF:31ID1-XRT{BMM:01}Diag2:",
-        datakey_suffix="_image",
-        path_provider=path_provider,
-        name="diag2",
     )

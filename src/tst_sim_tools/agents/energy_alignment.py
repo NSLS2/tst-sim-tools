@@ -25,8 +25,8 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
     def __init__(
         self,
         tiled_client: Any,
-        image_key: str | None = None,
-        target_centroid: tuple[float, float] | None = None,
+        image_key: str,
+        target_centroid: tuple[float, float],
         threshold: float = DEFAULT_IMAGE_THRESHOLD,
         blur: float = DEFAULT_IMAGE_BLUR,
     ) -> None:
@@ -55,8 +55,7 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         outcomes = []
         for idx, sid in enumerate(suggestion_ids):
             metrics = analyze_image(image_stack[idx], threshold=self._threshold, blur=self._blur)
-            height, width = image_stack[idx].shape
-            target_x, target_y = self._target_centroid or ((width - 1) / 2.0, (height - 1) / 2.0)
+            target_x, target_y = self._target_centroid
             outcomes.append(
                 {
                     LATERAL_POSITION_ERROR: float(

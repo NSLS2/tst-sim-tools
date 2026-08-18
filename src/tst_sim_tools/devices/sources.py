@@ -19,8 +19,6 @@ class XRTWiggler(StandardReadable, EpicsDevice):
     center_x: Ann[SignalRW[float], PvSuffix("center:x"), Format.CONFIG_SIGNAL]
     center_y: Ann[SignalRW[float], PvSuffix("center:y"), Format.CONFIG_SIGNAL]
     center_z: Ann[SignalRW[float], PvSuffix("center:z"), Format.CONFIG_SIGNAL]
-    pitch: Ann[SignalRW[float], PvSuffix("pitch"), Format.CONFIG_SIGNAL]
-    yaw: Ann[SignalRW[float], PvSuffix("yaw"), Format.CONFIG_SIGNAL]
 
     # --- Ray generation ---
     nrays: Ann[SignalRW[int], PvSuffix("nrays"), Format.CONFIG_SIGNAL]
