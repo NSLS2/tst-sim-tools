@@ -1,6 +1,5 @@
 """Blop agent for energy dependent alignment."""
 
-import asyncio
 import time
 from collections.abc import Sequence
 from functools import partial
@@ -8,13 +7,15 @@ from typing import Any, cast
 
 import numpy as np
 from blop.ax import Agent, Objective, RangeDOF
+from blop.ax.queueserver_agent import QueueserverAgent
 from blop.protocols import AcquisitionPlan, EvaluationFunction
 from bluesky.protocols import Readable
-from ophyd_async.core import SignalRW
+from bluesky.callbacks.zmq import RemoteDispatcher
+from bluesky_queueserver_api.http import REManagerAPI
 
 from ..analysis.image import analyze_energy_scan, image_series
 from ..devices.materials import XRTCrystalSi
-from ..devices.mirrors import XRTOpticalElement
+from ..devices.mirrors import XRTOpticalElement, XRTToroidMirror
 from ..devices.sources import XRTWiggler
 from ..plans.bmm import acquire_with_energy_scan
 
@@ -33,9 +34,9 @@ BMM_ENERGY_ALIGNMENT_REFERENCE_ENERGY = 7112.0
 BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL = 5e-5
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL = 0.33
 BMM_ENERGY_ALIGNMENT_TFM_YAW = 0.0
-BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-2.5e-5, 7.5e-5)
-BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-1e-4, 1e-4)
-BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS = (-0.05, 0.45)
+BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-7e-5, 9e-5)
+BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-4e-3, 1e-3)
+BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS = (-0.5, 0.65)
 BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET = 12
 
 
@@ -119,14 +120,13 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         return outcomes
 
 
-async def build_agent(
+def build_re_agent(
     dets: Sequence[Readable],
     tpw: XRTWiggler,
     dcm_c1: XRTOpticalElement,
     dcm_c2: XRTOpticalElement,
     crystal: XRTCrystalSi,
-    tfm_yaw: SignalRW,
-    tfm_lateral: SignalRW,
+    m2: XRTToroidMirror,
     tiled_client: Any,
     image_key: str,
     target_centroid: tuple[float, float],
@@ -150,10 +150,8 @@ async def build_agent(
         DCM crystal-2 optical element; its roll is the optimized DCM DOF.
     crystal
         Silicon crystal material supplying the lattice spacing.
-    tfm_yaw
-        Toroid mirror yaw actuator.
-    tfm_lateral
-        Toroid mirror lateral actuator.
+    m2
+        TFM of the BMM beamline.
     tiled_client
         Tiled client used to read back acquired detector images by run UID.
     image_key
@@ -176,16 +174,10 @@ async def build_agent(
     Agent
         Configured Blop agent for BMM simulator alignment.
     """
-    await asyncio.gather(
-        dcm_c2.roll.set(BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL),
-        tfm_lateral.set(BMM_ENERGY_ALIGNMENT_TFM_LATERAL),
-        tfm_yaw.set(BMM_ENERGY_ALIGNMENT_TFM_YAW),
-    )
-
     dofs = [
         RangeDOF(actuator=dcm_c2.roll, bounds=BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS, parameter_type="float"),
-        RangeDOF(actuator=tfm_yaw, bounds=BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS, parameter_type="float"),
-        RangeDOF(actuator=tfm_lateral, bounds=BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS, parameter_type="float"),
+        RangeDOF(actuator=m2.yaw, bounds=BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS, parameter_type="float"),
+        RangeDOF(actuator=m2.center_x, bounds=BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS, parameter_type="float"),
     ]
 
     objectives = [
@@ -218,6 +210,97 @@ async def build_agent(
             blur=blur,
         ),
         acquisition_plan=acquisition_plan,
+        checkpoint_path=checkpoint_path,
+    )
+    agent.ax_client.configure_generation_strategy(
+        method="fast",
+        initialization_budget=BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET,
+        initialize_with_center=False,
+    )
+
+    return agent
+
+
+def build_qs_agent(
+    re_manager: REManagerAPI,
+    dets: Sequence[str],
+    crystal_name: str,
+    tiled_client: Any,
+    image_key: str,
+    target_centroid: tuple[float, float],
+    energies: Sequence[float],
+    band: float = 1.0,
+    threshold: float = DEFAULT_IMAGE_THRESHOLD,
+    blur: float = DEFAULT_IMAGE_BLUR,
+    checkpoint_path: str = "/tmp/blop/energy-alignment.json",
+) -> QueueserverAgent:
+    """Build a queueserver agent that optimizes detector-screen statistics across an energy range.
+
+    Parameters
+    ----------
+    dets
+        Detector readables acquired at each energy for each optimization point.
+    crystal_name
+        Device name for silicon crystal material supplying the lattice spacing.
+    tiled_client
+        Tiled client used to read back acquired detector images by run UID.
+    image_key
+        Tiled primary-stream image data key.
+    target_centroid
+        ``(x, y)`` pixel coordinate for the aligned beam.
+    energies
+        Energy points acquired for each optimizer suggestion.
+    band
+        Source energy band width around each energy point.
+    threshold
+        Fraction of peak intensity to retain before blurring.
+    blur
+        Gaussian denoising blur sigma in pixels.
+    checkpoint_path
+        Ax optimizer checkpoint path.
+
+    Returns
+    -------
+    Agent
+        Configured Blop agent for BMM simulator alignment.
+    """
+    dofs = [
+        RangeDOF(actuator="dcm_c2-roll", bounds=BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS, parameter_type="float"),
+        RangeDOF(actuator="m2-yaw", bounds=BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS, parameter_type="float"),
+        RangeDOF(actuator="m2-center_x", bounds=BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS, parameter_type="float"),
+    ]
+
+    objectives = [
+        Objective(name=ALIGNMENT_SCORE, minimize=True),
+    ]
+
+    acquisition_plan_name = "acquire_with_energy_scan"
+    acquisition_plan_kwargs = {
+        "tpw": "tpw",
+        "dcm_c1": "dcm_c1",
+        "dcm_c2": "dcm_c2",
+        "crystal": crystal_name,
+        "energies": tuple(float(e) for e in energies),
+        "band": band,
+    }
+
+    dispatcher = RemoteDispatcher("127.0.0.1:5567")
+    agent = QueueserverAgent(
+        re_manager,
+        dispatcher,
+        sensors=dets,
+        dofs=dofs,
+        objectives=objectives,
+        evaluation_function=EnergyAlignmentEvalutation(
+            tiled_client,
+            image_key=image_key,
+            target_centroid=target_centroid,
+            energies=energies,
+            threshold=threshold,
+            blur=blur,
+        ),
+        acquisition_plan=acquisition_plan_name,
+        acquisition_plan_kwargs=acquisition_plan_kwargs,
         checkpoint_path=checkpoint_path,
     )
     agent.ax_client.configure_generation_strategy(
