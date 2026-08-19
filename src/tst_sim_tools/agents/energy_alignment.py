@@ -33,9 +33,9 @@ DEFAULT_IMAGE_THRESHOLD = 0.02
 DEFAULT_IMAGE_BLUR = 1.0
 BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT = 0.25
 BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT = 0.1
-BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT = 0.2
-BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT = 0.1
-BMM_ENERGY_ALIGNMENT_MIN_INTENSITY_FLOOR = 20_500.0
+BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT = 0.005
+BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT = 0.0025
+BMM_ENERGY_ALIGNMENT_MIN_INTENSITY_FLOOR = 15000.0
 BMM_ENERGY_ALIGNMENT_OUTCOME_CONSTRAINTS = (
     OutcomeConstraint(
         f"intensity >= {BMM_ENERGY_ALIGNMENT_MIN_INTENSITY_FLOOR}",
@@ -117,11 +117,11 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             min_intensity = float(np.min(summary["total"]))
             centroid_span = float(np.hypot(np.ptp(summary["x_centroid"]), np.ptp(summary["y_centroid"])))
             alignment_score = (
-                centroid_rms_error
-                + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error
-                + BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT * centroid_span
-                + BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT * fwhm
-                + BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT * max_fwhm
+                centroid_rms_error**2
+                + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error**2
+                + BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT * centroid_span**2
+                + BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT * fwhm**2
+                + BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT * max_fwhm**2
             )
             outcomes.append(
                 {
