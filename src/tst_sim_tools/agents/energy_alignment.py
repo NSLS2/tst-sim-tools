@@ -6,11 +6,12 @@ from functools import partial
 from typing import Any, cast
 
 import numpy as np
-from blop.ax import Agent, Objective, RangeDOF
+from ax.api.protocols import IMetric
+from blop.ax import Agent, Objective, OutcomeConstraint, RangeDOF
 from blop.ax.queueserver_agent import QueueserverAgent
 from blop.protocols import AcquisitionPlan, EvaluationFunction
-from bluesky.protocols import Readable
 from bluesky.callbacks.zmq import RemoteDispatcher
+from bluesky.protocols import Readable
 from bluesky_queueserver_api.http import REManagerAPI
 
 from ..analysis.image import analyze_energy_scan, image_series
@@ -30,6 +31,17 @@ MAX_FWHM = "max_fwhm"
 MIN_INTENSITY = "min_intensity"
 DEFAULT_IMAGE_THRESHOLD = 0.02
 DEFAULT_IMAGE_BLUR = 1.0
+BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT = 0.25
+BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT = 0.1
+BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT = 0.2
+BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT = 0.1
+BMM_ENERGY_ALIGNMENT_MIN_INTENSITY_FLOOR = 20_500.0
+BMM_ENERGY_ALIGNMENT_OUTCOME_CONSTRAINTS = (
+    OutcomeConstraint(
+        f"intensity >= {BMM_ENERGY_ALIGNMENT_MIN_INTENSITY_FLOOR}",
+        intensity=IMetric(name=MIN_INTENSITY),
+    ),
+)
 BMM_ENERGY_ALIGNMENT_REFERENCE_ENERGY = 7112.0
 BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL = 5e-5
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL = 0.33
@@ -101,8 +113,16 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             centroid_rms_error = float(np.sqrt(np.mean(centroid_error**2)))
             max_centroid_error = float(np.max(centroid_error))
             fwhm = float(np.mean(summary["fwhm_px"]))
+            max_fwhm = float(np.max(summary["fwhm_px"]))
+            min_intensity = float(np.min(summary["total"]))
             centroid_span = float(np.hypot(np.ptp(summary["x_centroid"]), np.ptp(summary["y_centroid"])))
-            alignment_score = centroid_rms_error + 0.25 * max_centroid_error + 0.1 * centroid_span + 0.1 * fwhm
+            alignment_score = (
+                centroid_rms_error
+                + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error
+                + BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT * centroid_span
+                + BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT * fwhm
+                + BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT * max_fwhm
+            )
             outcomes.append(
                 {
                     ALIGNMENT_SCORE: alignment_score,
@@ -112,8 +132,8 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
                     LATERAL_POSITION_ERROR: float(np.sqrt(np.mean(x_error**2))),
                     VERTICAL_POSITION_ERROR: float(np.sqrt(np.mean(y_error**2))),
                     FWHM: fwhm,
-                    MAX_FWHM: float(np.max(summary["fwhm_px"])),
-                    MIN_INTENSITY: float(np.min(summary["total"])),
+                    MAX_FWHM: max_fwhm,
+                    MIN_INTENSITY: min_intensity,
                     "_id": sid,
                 }
             )
@@ -184,6 +204,8 @@ def build_re_agent(
         Objective(name=ALIGNMENT_SCORE, minimize=True),
     ]
 
+    outcome_constraints = BMM_ENERGY_ALIGNMENT_OUTCOME_CONSTRAINTS
+
     acquisition_plan = cast(
         AcquisitionPlan,
         partial(
@@ -210,6 +232,7 @@ def build_re_agent(
             blur=blur,
         ),
         acquisition_plan=acquisition_plan,
+        outcome_constraints=outcome_constraints,
         checkpoint_path=checkpoint_path,
     )
     agent.ax_client.configure_generation_strategy(
@@ -274,6 +297,8 @@ def build_qs_agent(
         Objective(name=ALIGNMENT_SCORE, minimize=True),
     ]
 
+    outcome_constraints = BMM_ENERGY_ALIGNMENT_OUTCOME_CONSTRAINTS
+
     acquisition_plan_name = "acquire_with_energy_scan"
     acquisition_plan_kwargs = {
         "tpw": "tpw",
@@ -301,6 +326,7 @@ def build_qs_agent(
         ),
         acquisition_plan=acquisition_plan_name,
         acquisition_plan_kwargs=acquisition_plan_kwargs,
+        outcome_constraints=outcome_constraints,
         checkpoint_path=checkpoint_path,
     )
     agent.ax_client.configure_generation_strategy(
