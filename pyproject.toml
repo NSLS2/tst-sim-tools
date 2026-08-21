@@ -29,7 +29,7 @@ dynamic = ["version"]
 dependencies = [
   "bluesky>=1.15.1",
   "ophyd-async[ca,pva]",
-  "blop[cpu,ax,queueserver]",
+  "blop[cpu,ax,queueserver] @ git+https://github.com/bluesky/blop@main",
   "scipy>=1.14",
   "xrt==2.0.0b1",
 ]
@@ -72,6 +72,9 @@ version-file = "src/tst_sim_tools/_version.py"
 
 [tool.hatch.version.raw-options]
 local_scheme = "no-local-version"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pyright]
 typeCheckingMode = "standard"
@@ -162,6 +165,8 @@ bluesky-queueserver = "*"
 bluesky-httpserver = "*"
 bluesky-widgets = ">=0.0.18,<0.0.19"
 pyside6 = ">=6.11.1,<7"
+qtpy = ">=2.4.3,<3"
+pyqt = ">=5.15.11,<6"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
@@ -178,8 +183,8 @@ terminal-local = { features = [
 qs = { features = [
   "qs",
   "startup",
-  "startup-git",
-], solve-group = "startup-git", no-default-feature = true }
+  "startup-local",
+], solve-group = "startup-local", no-default-feature = true }
 dev = { features = ["dev"], solve-group = "default" }
 docs = { features = ["docs"], solve-group = "default" }
 
@@ -198,10 +203,11 @@ start-re-manager \
 --startup-script src/tst_sim_tools/startup.py \
 --user-group-permissions /tmp/bsqs \
 --existing-plans-devices /tmp/bsqs
+--device-max-depth 0
 """
 http-server-local = """
 QSERVER_ZMQ_CONTROL_ADDRESS=tcp://localhost:60615 \
 QSERVER_ZMQ_INFO_ADDRESS=tcp://localhost:60625 \
 QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
-uvicorn --host localhost --port 60610 bluesky_httpserver.server:app
+uvicorn --host localhost --port 60611 bluesky_httpserver.server:app
 """

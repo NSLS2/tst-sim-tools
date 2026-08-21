@@ -9,6 +9,7 @@ import numpy as np
 import ophyd_async.epics.core._aioca as _ophyd_aioca  # noqa: PLC2701
 from bluesky import RunEngine
 from bluesky.callbacks.best_effort import BestEffortCallback
+from bluesky.callbacks.zmq import Publisher
 from bluesky.plan_stubs import mv, rd
 from bluesky.plans import count, grid_scan, rel_scan, scan
 from bluesky_tiled_plugins import TiledWriter
@@ -20,9 +21,9 @@ from tst_sim_tools.devices.mirrors import XRTOpticalElement, XRTParabolicalMirro
 from tst_sim_tools.devices.slits import XRTRectangularAperature
 from tst_sim_tools.devices.sources import XRTWiggler
 from tst_sim_tools.plans.bmm import (
+    acquire_with_energy_scan,
     change_energy_stub,
     scan_energy,
-    acquire_with_energy_scan,
 )
 
 # FIXME:
@@ -60,6 +61,9 @@ else:
 
 tw = TiledWriter(client)
 RE.subscribe(tw)
+
+publisher = Publisher("127.0.0.1:32851")
+RE.subscribe(publisher)
 
 path = PurePath("/tmp/tst_testing")
 path_provider = YMDPathProvider(UUIDFilenameProvider(), path)

@@ -10,7 +10,7 @@ import bluesky.plans as bp
 import bluesky.preprocessors as bpp
 import numpy as np
 from blop.plans import default_acquire
-from blop.protocols import Actuator, Sensor
+from blop.protocols import Actuator
 from bluesky.plan_stubs import TakeReading
 from bluesky.protocols import Readable, Reading
 from bluesky.utils import MsgGenerator, plan
@@ -165,7 +165,7 @@ def energy_scan_take_reading(
 def acquire_with_energy_scan(
     suggestions: list[dict],
     actuators: Sequence[Actuator],
-    sensors: Sequence[Sensor] | None = None,
+    sensors: Sequence[Readable] | None = None,
     md: dict[str, Any] | None = None,
     *,
     tpw: XRTWiggler,

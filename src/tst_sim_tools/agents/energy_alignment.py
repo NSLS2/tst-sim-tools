@@ -284,13 +284,13 @@ def build_qs_agent(
 
     Returns
     -------
-    Agent
+    QueueserverAgent
         Configured Blop agent for BMM simulator alignment.
     """
     dofs = [
-        RangeDOF(actuator="dcm_c2-roll", bounds=BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS, parameter_type="float"),
-        RangeDOF(actuator="m2-yaw", bounds=BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS, parameter_type="float"),
-        RangeDOF(actuator="m2-center_x", bounds=BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS, parameter_type="float"),
+        RangeDOF(name="dcm_c2-roll", bounds=BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS, parameter_type="float"),
+        RangeDOF(name="m2-yaw", bounds=BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS, parameter_type="float"),
+        RangeDOF(name="m2-center_x", bounds=BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS, parameter_type="float"),
     ]
 
     objectives = [
@@ -309,7 +309,7 @@ def build_qs_agent(
         "band": band,
     }
 
-    dispatcher = RemoteDispatcher("127.0.0.1:5567")
+    dispatcher = RemoteDispatcher("127.0.0.1:40851")
     agent = QueueserverAgent(
         re_manager,
         dispatcher,
