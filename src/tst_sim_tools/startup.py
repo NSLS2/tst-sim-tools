@@ -14,6 +14,7 @@ from bluesky.plan_stubs import mv, rd
 from bluesky.plans import count, grid_scan, list_scan, rel_scan, scan
 from bluesky_tiled_plugins import TiledWriter
 from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
+from nslsii.ophyd_async.providers import NSLS2PathProvider
 
 from tst_sim_tools.devices.detectors import XRTScreenDetector
 from tst_sim_tools.devices.materials import XRTCrystalSi
@@ -53,20 +54,22 @@ if tiled_choice != TiledChoice.SIMPLE:
     else:
         print("Will connect to tiled-staging...")
         client = from_uri("https://tiled-staging.nsls2.bnl.gov")["tst/raw"]
+    path = PurePath("/nsls2/data/tst/legacy/")
+    # TODO: Use NSLS2PathProvider from nslsii package
+    path_provider = YMDPathProvider(UUIDFilenameProvider(), path)
 else:
     from tiled.client import simple
 
     print("Will connect to local tiled...")
-    client = simple(directory="/tmp/tst_testing", readable_storage="/tmp/tst_testing")
+    client = simple(directory="/tmp/tst_testing", readable_storage="/nsls2/data/tst/legacy")
+    path = PurePath("/nsls2/data/tst/legacy/")
+    path_provider = YMDPathProvider(UUIDFilenameProvider(), path)
 
 tw = TiledWriter(client)
 RE.subscribe(tw)
 
-publisher = Publisher("127.0.0.1:35091")
-RE.subscribe(publisher)
-
-path = PurePath("/tmp/tst_testing")
-path_provider = YMDPathProvider(UUIDFilenameProvider(), path)
+# publisher = Publisher("127.0.0.1:35091")
+# RE.subscribe(publisher)
 
 # --- BMM XRT Sim ---
 with init_devices():
