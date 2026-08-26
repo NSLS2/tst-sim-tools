@@ -19,7 +19,6 @@ Do not use this skill to submit plans or control the queue. State-changing opera
 - Use read-only endpoints to inspect state, discover names/signatures, map queue items to completed runs, and diagnose failures.
 - Do not construct `BPlan` objects in read-only helper code; writable queue composition belongs in MCP-mediated tooling.
 
-
 ## Project-Local Queue Server Defaults
 
 - Start the local Queue Server manager with `pixi run -e qs qs-server-local`.

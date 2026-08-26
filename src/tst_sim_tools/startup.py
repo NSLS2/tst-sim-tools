@@ -11,7 +11,7 @@ from bluesky import RunEngine
 from bluesky.callbacks.best_effort import BestEffortCallback
 from bluesky.callbacks.zmq import Publisher
 from bluesky.plan_stubs import mv, rd
-from bluesky.plans import count, grid_scan, rel_scan, scan
+from bluesky.plans import count, grid_scan, list_scan, rel_scan, scan
 from bluesky_tiled_plugins import TiledWriter
 from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
 
@@ -62,7 +62,7 @@ else:
 tw = TiledWriter(client)
 RE.subscribe(tw)
 
-publisher = Publisher("127.0.0.1:32851")
+publisher = Publisher("127.0.0.1:35091")
 RE.subscribe(publisher)
 
 path = PurePath("/tmp/tst_testing")
