@@ -46,8 +46,8 @@ BMM_ENERGY_ALIGNMENT_REFERENCE_ENERGY = 7112.0
 BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL = 5e-5
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL = 0.33
 BMM_ENERGY_ALIGNMENT_TFM_YAW = 0.0
-BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-7e-5, 9e-5)
-BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-4e-3, 1e-3)
+BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-2e-4, 1e-4)
+BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-1e-4, 1e-4)
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS = (-0.5, 0.65)
 BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET = 12
 
@@ -117,11 +117,11 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             min_intensity = float(np.min(summary["total"]))
             centroid_span = float(np.hypot(np.ptp(summary["x_centroid"]), np.ptp(summary["y_centroid"])))
             alignment_score = (
-                centroid_rms_error**2
-                + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error**2
-                + BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT * centroid_span**2
-                + BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT * fwhm**2
-                + BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT * max_fwhm**2
+                centroid_rms_error
+                + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error
+                + BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT * centroid_span
+                + BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT * fwhm
+                + BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT * max_fwhm
             )
             outcomes.append(
                 {
