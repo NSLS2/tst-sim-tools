@@ -36,6 +36,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "h5py",
   "ophyd-async[ca,sim]",
   "import-linter",
   "numpydoc",
@@ -46,6 +47,7 @@ dev = [
   "pytest-asyncio",
   "pytest-cov",
   "pytest-mock",
+  "pytest-socket>=0.8.1",
   "ruff",
   "tiled[client,server]>=0.2.14",
   "bluesky-tiled-plugins>=2.0.9",
@@ -78,6 +80,13 @@ allow-direct-references = true
 
 [tool.pyright]
 typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers --disable-socket --allow-unix-socket"
+markers = [
+  "integration: local round-trip tests excluded from per-push CI",
+]
 
 [tool.coverage.paths]
 # Tests are run from installed location, map back to the src directory
@@ -187,6 +196,10 @@ qs = { features = [
 ], solve-group = "startup-local", no-default-feature = true }
 dev = { features = ["dev"], solve-group = "default" }
 docs = { features = ["docs"], solve-group = "default" }
+
+[tool.pixi.feature.dev.tasks]
+test-unit = "pytest tests/unit --cov=tst_sim_tools --cov-report=term-missing"
+test-integration = "pytest -m integration tests/integration"
 
 [tool.pixi.feature.startup-local.tasks]
 start-local = "TILED=0 ipython -i -m tst_sim_tools.startup"

@@ -13,8 +13,8 @@ from bluesky.callbacks.zmq import Publisher
 from bluesky.plan_stubs import mv, rd
 from bluesky.plans import count, grid_scan, list_scan, rel_scan, scan
 from bluesky_tiled_plugins import TiledWriter
+from nslsii.ophyd_async.providers import NSLS2PathProvider  # pyright: ignore[reportMissingImports]
 from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
-from nslsii.ophyd_async.providers import NSLS2PathProvider
 
 from tst_sim_tools.devices.detectors import XRTScreenDetector
 from tst_sim_tools.devices.materials import XRTCrystalSi

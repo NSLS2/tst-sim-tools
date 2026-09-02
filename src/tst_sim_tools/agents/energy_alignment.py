@@ -1,7 +1,7 @@
 """Blop agent for energy dependent alignment."""
 
 import time
-from collections.abc import Sequence
+from collections.abc import Hashable, Mapping, Sequence
 from functools import partial
 from typing import Any, cast
 
@@ -73,7 +73,7 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         self._threshold = threshold
         self._blur = blur
 
-    def _poll_for_images(self, uid: str) -> np.ndarray:
+    def _poll_for_images(self, uid: Hashable) -> np.ndarray:
         while True:
             try:
                 run = self._client[uid]
@@ -82,7 +82,7 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             except KeyError:
                 time.sleep(0.1)
 
-    def __call__(self, uid: str, suggestions: list[dict]) -> list[dict]:
+    def __call__(self, uid: Hashable, suggestions: Sequence[Mapping]) -> list[dict]:
         images = self._poll_for_images(uid)
         image_stack = image_series(images)
         suggestion_ids = [suggestion["_id"] for suggestion in self._client[uid].metadata["start"]["blop_suggestions"]]
