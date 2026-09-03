@@ -7,6 +7,13 @@ from numpy.typing import ArrayLike
 from scipy import ndimage, signal
 
 
+def _finite_float_array(values: ArrayLike) -> np.ndarray:
+    """Return an owned floating-point array with non-finite values set to zero."""
+    array = np.array(values, dtype=float, copy=True)
+    array[~np.isfinite(array)] = 0.0
+    return array
+
+
 def image_series(images: ArrayLike) -> np.ndarray:
     """Return detector data as an ``(N, height, width)`` floating-point image stack.
 
@@ -21,7 +28,7 @@ def image_series(images: ArrayLike) -> np.ndarray:
     numpy.ndarray
         Floating-point image stack with non-finite values replaced by zero.
     """
-    stack = np.asarray(images, dtype=float)
+    stack = _finite_float_array(images)
     if stack.ndim == 2:
         stack = stack[np.newaxis, :, :]
     elif stack.ndim == 4:
@@ -85,7 +92,7 @@ def threshold_image(image: ArrayLike, threshold: float = 0.0) -> np.ndarray:
     if not 0.0 <= threshold <= 1.0:
         raise ValueError(f"Expected threshold in [0, 1], but got {threshold}")
 
-    thresholded = np.asarray(image, dtype="float")
+    thresholded = _finite_float_array(image)
     peak = float(thresholded.max())
     if peak <= 0.0:
         thresholded.fill(0.0)
@@ -118,7 +125,7 @@ def gaussian_blur(image: ArrayLike, sigma: float = 0.0, truncate: float = 4.0) -
     if truncate <= 0.0:
         raise ValueError(f"Expected positive truncate, but got {truncate}")
 
-    blurred = np.asarray(image, dtype="float")
+    blurred = _finite_float_array(image)
     if sigma == 0.0:
         return blurred
 
@@ -275,8 +282,8 @@ def analyze_image(
     """
     processed = preprocess(image, threshold=threshold, blur=blur)
     height, width = processed.shape
-    center_x = width
-    center_y = height
+    center_x = (width - 1) / 2.0
+    center_y = (height - 1) / 2.0
     total = float(processed.sum())
     peak = float(processed.max())
     if total <= 0.0:
