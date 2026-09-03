@@ -31,6 +31,8 @@ MAX_FWHM = "max_fwhm"
 MIN_INTENSITY = "min_intensity"
 DEFAULT_IMAGE_THRESHOLD = 0.02
 DEFAULT_IMAGE_BLUR = 1.0
+CATALOG_POLL_INTERVAL = 0.1
+CATALOG_POLL_TIMEOUT = 10.0
 BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT = 0.25
 BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT = 0.1
 BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT = 0.005
@@ -73,17 +75,21 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         self._threshold = threshold
         self._blur = blur
 
-    def _poll_for_run_images(self, uid: Hashable) -> tuple[Any, np.ndarray]:
+    def _poll_for_run(self, uid: Hashable) -> Any:
+        deadline = time.monotonic() + CATALOG_POLL_TIMEOUT
         while True:
             try:
-                run = self._client[uid]
-                stream = run["primary"]
-                return run, stream[self._image_key].read()
-            except KeyError:
-                time.sleep(0.1)
+                return self._client[uid]
+            except KeyError as error:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"Run {uid!r} did not appear in Tiled within {CATALOG_POLL_TIMEOUT:g} seconds"
+                    ) from error
+                time.sleep(CATALOG_POLL_INTERVAL)
 
     def __call__(self, uid: Hashable, suggestions: Sequence[Mapping]) -> list[dict]:
-        run, images = self._poll_for_run_images(uid)
+        run = self._poll_for_run(uid)
+        images = run["primary"][self._image_key].read()
         image_stack = image_series(images)
         suggestion_ids = [suggestion["_id"] for suggestion in run.metadata["start"]["blop_suggestions"]]
         n_energies = self._energies.size

@@ -97,10 +97,10 @@ def alignment_images() -> np.ndarray:
     return images
 
 
-def make_evaluator(client) -> EnergyAlignmentEvalutation:
+def make_evaluator(client, *, image_key: str = "screen_image") -> EnergyAlignmentEvalutation:
     return EnergyAlignmentEvalutation(
         client,
-        image_key="screen_image",
+        image_key=image_key,
         target_centroid=(2.0, 2.0),
         energies=(7000.0, 7100.0),
         threshold=0.0,
@@ -160,6 +160,43 @@ def test_energy_alignment_evaluation_retries_key_error_once(mocker) -> None:
     assert client.calls == 2
     assert outcomes[0]["_id"] == "trial-0"
     assert tuple(outcomes[0]) == OUTCOME_KEYS
+
+
+@pytest.mark.parametrize(
+    ("run", "image_key", "missing_key"),
+    [
+        ({}, "screen_image", "primary"),
+        ({"primary": {}}, "missing_image", "missing_image"),
+    ],
+)
+def test_energy_alignment_evaluation_does_not_retry_missing_run_data(
+    run: dict,
+    image_key: str,
+    missing_key: str,
+    mocker,
+) -> None:
+    sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
+    evaluator = make_evaluator({"run-uid": run}, image_key=image_key)
+
+    with pytest.raises(KeyError) as caught:
+        evaluator("run-uid", suggestions=[])
+
+    assert caught.value.args == (missing_key,)
+    sleep.assert_not_called()
+
+
+def test_energy_alignment_evaluation_times_out_waiting_for_run(mocker) -> None:
+    sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
+    monotonic = mocker.patch("tst_sim_tools.agents.energy_alignment.time.monotonic", side_effect=[0.0, 5.0, 10.0])
+    evaluator = make_evaluator({})
+
+    with pytest.raises(TimeoutError) as caught:
+        evaluator("run-uid", suggestions=[])
+
+    assert str(caught.value) == "Run 'run-uid' did not appear in Tiled within 10 seconds"
+    assert isinstance(caught.value.__cause__, KeyError)
+    sleep.assert_called_once_with(0.1)
+    assert monotonic.call_count == 3
 
 
 def test_energy_alignment_evaluation_propagates_non_key_error(mocker) -> None:
