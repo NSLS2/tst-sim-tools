@@ -177,8 +177,18 @@ pyside6 = ">=6.11.1,<7"
 qtpy = ">=2.4.3,<3"
 pyqt = ">=5.15.11,<6"
 
+[tool.pixi.feature.ioc.dependencies]
+python = ">=3.11,<3.14"
+caproto = "*"
+numpy = "*"
+h5py = "*"
+
+[tool.pixi.feature.ioc.pypi-dependencies]
+xrt = ">=2.0.0b1"
+
 [tool.pixi.environments]
 default = { solve-group = "default" }
+ioc = { features = ["ioc"], solve-group = "ioc", no-default-feature = true }
 terminal = { features = [
   "terminal",
   "startup",
