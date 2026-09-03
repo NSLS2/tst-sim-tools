@@ -3,7 +3,7 @@
 
 Usage
 -----
-python -m caproto.ioc_examples.xrt_xml_ioc --xml beamline.xml --prefix XRT:
+pixi run -e ioc python iocs/xrt_xml_ioc.py --xml beamline.xml --prefix XRT:
 
 The XML file defines the live configurable PVs. The same file is loaded into XRT
 for in-memory simulation. The XML file on disk is never modified.
@@ -19,17 +19,16 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+import h5py
 import numpy as np
 import xrt.backends.raycing as raycing
-import h5py
-
 from caproto import ChannelType
 from caproto.server import PVSpec, run, template_arg_parser
-
 
 logger = logging.getLogger("caproto.ctx.xrt_xml_ioc")
 
@@ -39,7 +38,7 @@ MAX_PV_NAME_LENGTH = 59
 PATH_STRING_MAX_LENGTH = 4096
 FILENAME_STRING_MAX_LENGTH = 1024
 STATUS_STRINGS = ["Idle", "Acquiring", "Writing", "Error"]
-STRING_KWARGS = dict(string_encoding="utf-8", report_as_string=True)
+STRING_KWARGS = {"string_encoding": "utf-8", "report_as_string": True}
 
 STRUCTURAL_COMPONENTS = {"properties", "parameters"}
 SHORTENED_TOP_LEVEL_CONTEXTS = {"Materials", "FigureErrors"}
@@ -88,6 +87,8 @@ FLOAT_RE = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$"
 
 @dataclass
 class XmlEntry:
+    """Describe one configurable XML parameter and its location."""
+
     path: tuple[str, ...]
     raw_text: str
     value: Any
@@ -101,6 +102,8 @@ class XmlEntry:
 
 @dataclass
 class LiveBinding:
+    """Bind a PV to a readable and writable XRT value."""
+
     read: Callable[[], Any]
     write: Callable[[Any], None]
     integer_hint: bool = False
@@ -109,6 +112,8 @@ class LiveBinding:
 
 @dataclass
 class XmlPV:
+    """Describe a PV that exposes one live XML parameter."""
+
     suffix: str
     path: tuple[str, ...]
     raw_text: str
@@ -123,6 +128,8 @@ class XmlPV:
 
 @dataclass
 class ScreenCapture:
+    """Own an open HDF5 capture destination for one screen."""
+
     h5_path: Path | None = None
     h5_file: Any = None
     dataset: Any = None
@@ -133,7 +140,7 @@ class ScreenCapture:
 
     def open(
         self,
-        screen: "ScreenState",
+        screen: ScreenState,
         *,
         overwrite: bool,
     ) -> None:
@@ -195,6 +202,8 @@ class ScreenCapture:
 
 @dataclass
 class ScreenState:
+    """Store PV and capture state for one XRT screen."""
+
     name: str
     safe_name: str
     pv_suffix_base: str
@@ -391,7 +400,7 @@ def _iter_xml_entries(root: ET.Element) -> list[XmlEntry]:
         if values is None:
             entries.append(XmlEntry(path=path, raw_text=raw_text, value=parsed))
             continue
-        for index, (field_name, value) in enumerate(zip(COMPOUND_FIELDS[path[-1]], values)):
+        for index, (field_name, value) in enumerate(zip(COMPOUND_FIELDS[path[-1]], values, strict=True)):
             entries.append(
                 XmlEntry(
                     path=path,
@@ -590,7 +599,7 @@ class SimulationCoordinator:
                 else:
                     await loop.run_in_executor(None, screen.capture.close)
                     await screen.frames_written_pv.write(0)
-        except Exception as exc:
+        except Exception:
             await screen.status_pv.write("Error")
             logger.exception("Failed to set Capture=%s for %s", enabled, screen.name)
             return False
@@ -613,7 +622,7 @@ class SimulationCoordinator:
         while True:
             try:
                 first = await asyncio.wait_for(self.queue.get(), timeout=0.1)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return
 
             requested = {first}
@@ -665,7 +674,7 @@ class SimulationCoordinator:
                         logger.info("%s FramesWritten=%d", self.screens[name].name, count)
                     for name in write_names:
                         await self.screens[name].status_pv.write("Acquiring")
-        except Exception as exc:
+        except Exception:
             for name in requested:
                 await self.screens[name].status_pv.write("Error")
             logger.exception("XRT acquisition batch failed")
@@ -740,6 +749,8 @@ class SimulationCoordinator:
 
 
 class XrtXmlIOC:
+    """Expose a caproto PV database backed by an XRT XML beamline."""
+
     def __init__(
         self,
         *,
@@ -899,7 +910,7 @@ class XrtXmlIOC:
             max_length=self._pv_suffix_max_length(),
         )
         specs = []
-        for suffix, (entry, binding) in zip(suffixes, bound_entries):
+        for suffix, (entry, binding) in zip(suffixes, bound_entries, strict=True):
             xml_pv = XmlPV(
                 suffix=suffix,
                 path=entry.path,
@@ -1287,6 +1298,7 @@ class XrtXmlIOC:
 
 
 def main() -> None:
+    """Parse IOC options and run the caproto server."""
     parser, split_args = template_arg_parser(
         default_prefix="xrt:",
         desc=__doc__,
