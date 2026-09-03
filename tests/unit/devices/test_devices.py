@@ -125,7 +125,7 @@ async def test_toroid_meridional_radius_is_writable() -> None:
     assert await toroid.meridional_radius.get_value() == 4.5
 
 
-async def test_rectangular_aperature_signal_sources_and_writes() -> None:
+async def test_rectangular_aperture_signal_sources_and_writes() -> None:
     async with init_devices(mock=True):
         aperture = XRTRectangularAperature("ca://UNIT:", name="aperture")
 
