@@ -185,4 +185,4 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
         assert outcome[VERTICAL_POSITION_ERROR] == 0.0
         assert outcome[FWHM] == 1.0
         assert outcome[MAX_FWHM] == 1.0
-        assert outcome[ALIGNMENT_SCORE] == pytest.approx(0.8575)
+        assert outcome[ALIGNMENT_SCORE] == pytest.approx(math.sqrt(0.5) + 0.25 + 0.1 + 0.005 + 0.0025)

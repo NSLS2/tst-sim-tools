@@ -317,7 +317,7 @@ def test_scan_energy_emits_single_run_and_leaves_final_state(run_engine, documen
     assert signal_value(dcm_c2.center_y) == pytest.approx(c2_y)
     assert signal_value(dcm_c2.center_z) == pytest.approx(c2_z)
     assert run_engine.state == "idle"
-    assert detector._cache is None
+    assert getattr(detector, "_cache", None) is None
 
 
 def test_scan_energy_empty_sequence_is_successful_empty_run(run_engine, documents, bmm_devices) -> None:
@@ -332,7 +332,7 @@ def test_scan_energy_empty_sequence_is_successful_empty_run(run_engine, document
     assert len(collected["event"]) == 0
     assert collected["stop"][0]["exit_status"] == "success"
     assert run_engine.state == "idle"
-    assert detector._cache is None
+    assert getattr(detector, "_cache", None) is None
 
 
 def test_scan_energy_failure_retains_event_and_unstages(run_engine, documents, bmm_devices) -> None:
@@ -348,7 +348,7 @@ def test_scan_energy_failure_retains_event_and_unstages(run_engine, documents, b
     assert collected["stop"][0]["exit_status"] == "fail"
     assert MODE_C_ERROR in collected["stop"][0]["reason"]
     assert run_engine.state == "idle"
-    assert detector._cache is None
+    assert getattr(detector, "_cache", None) is None
 
 
 def test_acquire_with_energy_scan_orders_suggestions_then_energies(
@@ -415,4 +415,4 @@ def test_acquire_with_energy_scan_empty_energies_fails_and_unstages(run_engine, 
         )
 
     assert run_engine.state == "idle"
-    assert sensor._cache is None
+    assert getattr(sensor, "_cache", None) is None

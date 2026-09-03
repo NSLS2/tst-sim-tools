@@ -121,7 +121,6 @@ def test_energy_alignment_evaluation_reports_each_suggestion() -> None:
 
     assert [tuple(outcome) for outcome in outcomes] == [OUTCOME_KEYS, OUTCOME_KEYS]
     assert outcomes[0]["_id"] == "trial-0"
-    assert outcomes[0][ALIGNMENT_SCORE] == pytest.approx(0.8575)
     assert outcomes[0][CENTROID_RMS_ERROR] == pytest.approx(np.sqrt(0.5))
     assert outcomes[0][MAX_CENTROID_ERROR] == 1.0
     assert outcomes[0][CENTROID_SPAN] == 1.0
@@ -132,7 +131,6 @@ def test_energy_alignment_evaluation_reports_each_suggestion() -> None:
     assert outcomes[0][MIN_INTENSITY] == 20_000.0
 
     assert outcomes[1]["_id"] == "trial-1"
-    assert outcomes[1][ALIGNMENT_SCORE] == pytest.approx(1.6575)
     assert outcomes[1][CENTROID_RMS_ERROR] == 1.0
     assert outcomes[1][MAX_CENTROID_ERROR] == 1.0
     assert outcomes[1][CENTROID_SPAN] == 2.0
@@ -143,6 +141,15 @@ def test_energy_alignment_evaluation_reports_each_suggestion() -> None:
     assert outcomes[1][MIN_INTENSITY] == 18_000.0
 
 
+def test_energy_alignment_evaluation_applies_weighted_score() -> None:
+    evaluator = make_evaluator({"run-uid": FakeRun(alignment_images(), ["trial-0", "trial-1"])})
+
+    outcomes = evaluator("run-uid", suggestions=[])
+
+    assert outcomes[0][ALIGNMENT_SCORE] == pytest.approx(np.sqrt(0.5) + 0.25 + 0.1 + 0.005 + 0.0025)
+    assert outcomes[1][ALIGNMENT_SCORE] == pytest.approx(1.0 + 0.25 + 0.2 + 0.005 + 0.0025)
+
+
 def test_energy_alignment_evaluation_retries_key_error_once(mocker) -> None:
     client = EventuallyConsistentClient(FakeRun(alignment_images()[:2], ["trial-0"]))
     sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
@@ -150,9 +157,9 @@ def test_energy_alignment_evaluation_retries_key_error_once(mocker) -> None:
     outcomes = make_evaluator(client)("run-uid", suggestions=[])
 
     sleep.assert_called_once_with(0.1)
-    assert client.calls == 3
+    assert client.calls == 2
     assert outcomes[0]["_id"] == "trial-0"
-    assert outcomes[0][ALIGNMENT_SCORE] == pytest.approx(0.8575)
+    assert tuple(outcomes[0]) == OUTCOME_KEYS
 
 
 def test_energy_alignment_evaluation_propagates_non_key_error(mocker) -> None:

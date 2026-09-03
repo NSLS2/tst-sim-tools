@@ -73,19 +73,19 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         self._threshold = threshold
         self._blur = blur
 
-    def _poll_for_images(self, uid: Hashable) -> np.ndarray:
+    def _poll_for_run_images(self, uid: Hashable) -> tuple[Any, np.ndarray]:
         while True:
             try:
                 run = self._client[uid]
                 stream = run["primary"]
-                return stream[self._image_key].read()
+                return run, stream[self._image_key].read()
             except KeyError:
                 time.sleep(0.1)
 
     def __call__(self, uid: Hashable, suggestions: Sequence[Mapping]) -> list[dict]:
-        images = self._poll_for_images(uid)
+        run, images = self._poll_for_run_images(uid)
         image_stack = image_series(images)
-        suggestion_ids = [suggestion["_id"] for suggestion in self._client[uid].metadata["start"]["blop_suggestions"]]
+        suggestion_ids = [suggestion["_id"] for suggestion in run.metadata["start"]["blop_suggestions"]]
         n_energies = self._energies.size
         expected_images = len(suggestion_ids) * n_energies
         if image_stack.shape[0] != expected_images:
