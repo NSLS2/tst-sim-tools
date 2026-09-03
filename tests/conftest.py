@@ -31,7 +31,9 @@ def run_engine() -> Generator[RunEngine]:
             except RuntimeError:
                 pass
         loop.call_soon_threadsafe(loop.stop)
-        engine._th.join()
+        thread = getattr(engine, "_th", None)
+        if thread is not None:
+            thread.join()
         loop.close()
 
 
