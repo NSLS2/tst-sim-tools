@@ -1,6 +1,6 @@
 from functools import partial
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -60,12 +60,53 @@ class FakeRun:
                 "blop_suggestions": [{"_id": suggestion_id} for suggestion_id in suggestion_ids],
             }
         }
-        self.primary = {"screen_image": FakeField(images)}
+        self.primary: Any = {"screen_image": FakeField(images)}
 
     def __getitem__(self, key: str):
         if key != "primary":
             raise KeyError(key)
         return self.primary
+
+
+class EventuallyConsistentPrimaryRun(FakeRun):
+    def __init__(self, images: np.ndarray, suggestion_ids: list[str]) -> None:
+        super().__init__(images, suggestion_ids)
+        self.calls = 0
+
+    def __getitem__(self, key: str):
+        self.calls += 1
+        if self.calls == 1:
+            raise KeyError(key)
+        return super().__getitem__(key)
+
+
+class EventuallyConsistentStream:
+    def __init__(self, field: FakeField) -> None:
+        self.field = field
+        self.calls = 0
+
+    def __getitem__(self, key: str) -> FakeField:
+        self.calls += 1
+        if self.calls == 1 or key != "screen_image":
+            raise KeyError(key)
+        return self.field
+
+
+class EventuallyConsistentField(FakeField):
+    def __init__(self, images: np.ndarray) -> None:
+        super().__init__(images)
+        self.calls = 0
+
+    def read(self) -> np.ndarray:
+        self.calls += 1
+        if self.calls == 1:
+            raise KeyError("external asset")
+        return super().read()
+
+
+class MissingField:
+    def read(self) -> np.ndarray:
+        raise KeyError("external asset")
 
 
 class EventuallyConsistentClient:
@@ -162,38 +203,75 @@ def test_energy_alignment_evaluation_retries_key_error_once(mocker) -> None:
     assert tuple(outcomes[0]) == OUTCOME_KEYS
 
 
+def test_energy_alignment_evaluation_retries_missing_primary_stream(mocker) -> None:
+    run = EventuallyConsistentPrimaryRun(alignment_images()[:2], ["trial-0"])
+    sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
+
+    outcomes = make_evaluator({"run-uid": run})("run-uid", suggestions=[])
+
+    sleep.assert_called_once_with(0.1)
+    assert run.calls == 2
+    assert outcomes[0]["_id"] == "trial-0"
+
+
+def test_energy_alignment_evaluation_retries_missing_image_key(mocker) -> None:
+    run = FakeRun(alignment_images()[:2], ["trial-0"])
+    stream = EventuallyConsistentStream(run.primary["screen_image"])
+    run.primary = stream
+    sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
+
+    outcomes = make_evaluator({"run-uid": run})("run-uid", suggestions=[])
+
+    sleep.assert_called_once_with(0.1)
+    assert stream.calls == 2
+    assert outcomes[0]["_id"] == "trial-0"
+
+
+def test_energy_alignment_evaluation_retries_unreadable_image_data(mocker) -> None:
+    run = FakeRun(alignment_images()[:2], ["trial-0"])
+    field = EventuallyConsistentField(alignment_images()[:2])
+    run.primary = {"screen_image": field}
+    sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
+
+    outcomes = make_evaluator({"run-uid": run})("run-uid", suggestions=[])
+
+    sleep.assert_called_once_with(0.1)
+    assert field.calls == 2
+    assert outcomes[0]["_id"] == "trial-0"
+
+
 @pytest.mark.parametrize(
-    ("run", "image_key", "missing_key"),
+    ("client", "image_key", "waiting_for"),
     [
-        ({}, "screen_image", "primary"),
-        ({"primary": {}}, "missing_image", "missing_image"),
+        ({}, "screen_image", "run 'run-uid' in Tiled"),
+        ({"run-uid": {}}, "screen_image", "primary stream for run 'run-uid'"),
+        (
+            {"run-uid": {"primary": {}}},
+            "missing_image",
+            "image key 'missing_image' in the primary stream for run 'run-uid'",
+        ),
+        (
+            {"run-uid": {"primary": {"screen_image": MissingField()}}},
+            "screen_image",
+            "readable data for image key 'screen_image' in run 'run-uid'",
+        ),
     ],
+    ids=["run", "primary-stream", "image-key", "image-data"],
 )
-def test_energy_alignment_evaluation_does_not_retry_missing_run_data(
-    run: dict,
+def test_energy_alignment_evaluation_times_out_waiting_for_tiled_data(
+    client: dict,
     image_key: str,
-    missing_key: str,
+    waiting_for: str,
     mocker,
 ) -> None:
     sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
-    evaluator = make_evaluator({"run-uid": run}, image_key=image_key)
-
-    with pytest.raises(KeyError) as caught:
-        evaluator("run-uid", suggestions=[])
-
-    assert caught.value.args == (missing_key,)
-    sleep.assert_not_called()
-
-
-def test_energy_alignment_evaluation_times_out_waiting_for_run(mocker) -> None:
-    sleep = mocker.patch("tst_sim_tools.agents.energy_alignment.time.sleep")
     monotonic = mocker.patch("tst_sim_tools.agents.energy_alignment.time.monotonic", side_effect=[0.0, 5.0, 10.0])
-    evaluator = make_evaluator({})
+    evaluator = make_evaluator(client, image_key=image_key)
 
     with pytest.raises(TimeoutError) as caught:
         evaluator("run-uid", suggestions=[])
 
-    assert str(caught.value) == "Run 'run-uid' did not appear in Tiled within 10 seconds"
+    assert str(caught.value) == f"Timed out after 10 seconds waiting for {waiting_for}"
     assert isinstance(caught.value.__cause__, KeyError)
     sleep.assert_called_once_with(0.1)
     assert monotonic.call_count == 3

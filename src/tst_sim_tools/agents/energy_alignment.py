@@ -75,21 +75,27 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         self._threshold = threshold
         self._blur = blur
 
-    def _poll_for_run(self, uid: Hashable) -> Any:
+    def _poll_for_run_images(self, uid: Hashable) -> tuple[Any, np.ndarray]:
         deadline = time.monotonic() + CATALOG_POLL_TIMEOUT
         while True:
+            waiting_for = f"run {uid!r} in Tiled"
             try:
-                return self._client[uid]
+                run = self._client[uid]
+                waiting_for = f"primary stream for run {uid!r}"
+                stream = run["primary"]
+                waiting_for = f"image key {self._image_key!r} in the primary stream for run {uid!r}"
+                image = stream[self._image_key]
+                waiting_for = f"readable data for image key {self._image_key!r} in run {uid!r}"
+                return run, image.read()
             except KeyError as error:
                 if time.monotonic() >= deadline:
                     raise TimeoutError(
-                        f"Run {uid!r} did not appear in Tiled within {CATALOG_POLL_TIMEOUT:g} seconds"
+                        f"Timed out after {CATALOG_POLL_TIMEOUT:g} seconds waiting for {waiting_for}"
                     ) from error
                 time.sleep(CATALOG_POLL_INTERVAL)
 
     def __call__(self, uid: Hashable, suggestions: Sequence[Mapping]) -> list[dict]:
-        run = self._poll_for_run(uid)
-        images = run["primary"][self._image_key].read()
+        run, images = self._poll_for_run_images(uid)
         image_stack = image_series(images)
         suggestion_ids = [suggestion["_id"] for suggestion in run.metadata["start"]["blop_suggestions"]]
         n_energies = self._energies.size
