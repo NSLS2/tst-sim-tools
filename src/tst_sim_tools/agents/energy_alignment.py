@@ -3,7 +3,7 @@
 import logging
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, cast
@@ -35,6 +35,8 @@ MAX_FWHM = "max_fwhm"
 MIN_INTENSITY = "min_intensity"
 DEFAULT_IMAGE_THRESHOLD = 0.02
 DEFAULT_IMAGE_BLUR = 1.0
+CATALOG_POLL_INTERVAL = 0.1
+CATALOG_POLL_TIMEOUT = 10.0
 BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT = 0.25
 BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT = 0.1
 BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT = 0.005
@@ -50,8 +52,8 @@ BMM_ENERGY_ALIGNMENT_REFERENCE_ENERGY = 7112.0
 BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL = 5e-5
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL = 0.33
 BMM_ENERGY_ALIGNMENT_TFM_YAW = 0.0
-BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-7e-5, 9e-5)
-BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-4e-3, 1e-3)
+BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-2e-4, 1e-4)
+BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-1e-4, 1e-4)
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS = (-0.5, 0.65)
 BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET = 12
 
@@ -74,7 +76,7 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         energies: Sequence[float],
         threshold: float = DEFAULT_IMAGE_THRESHOLD,
         blur: float = DEFAULT_IMAGE_BLUR,
-        image_poll_period: float = 0.1,
+        image_poll_period: float = CATALOG_POLL_INTERVAL,
     ) -> None:
         self._client = tiled_client
         self._image_key = image_key
@@ -86,26 +88,33 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         self._blur = blur
         self._image_poll_period = image_poll_period
 
-    def _before_image_retry(self, uid: str) -> None:
+    def _before_image_retry(self, uid: Hashable) -> None:
         return
 
-    def _poll_for_images(self, uid: str) -> np.ndarray:
+    def _poll_for_run_images(self, uid: Hashable) -> tuple[Any, np.ndarray]:
+        deadline = time.monotonic() + CATALOG_POLL_TIMEOUT
         while True:
+            waiting_for = f"run {uid!r} in Tiled"
             try:
                 run = self._client[uid]
+                waiting_for = f"primary stream for run {uid!r}"
                 stream = run["primary"]
-                return stream[self._image_key].read()
-            except KeyError:
+                waiting_for = f"image key {self._image_key!r} in the primary stream for run {uid!r}"
+                image = stream[self._image_key]
+                waiting_for = f"readable data for image key {self._image_key!r} in run {uid!r}"
+                return run, image.read()
+            except KeyError as error:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"Timed out after {CATALOG_POLL_TIMEOUT:g} seconds waiting for {waiting_for}"
+                    ) from error
                 self._before_image_retry(uid)
                 time.sleep(self._image_poll_period)
 
-    def _suggestion_ids(self, uid: str) -> list[Any]:
-        return [suggestion["_id"] for suggestion in self._client[uid].metadata["start"]["blop_suggestions"]]
-
-    def _evaluate_run(self, uid: str, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-        images = self._poll_for_images(uid)
+    def _evaluate_run(self, uid: Hashable, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        run, images = self._poll_for_run_images(uid)
         image_stack = image_series(images)
-        suggestion_ids = self._suggestion_ids(uid)
+        suggestion_ids = [suggestion["_id"] for suggestion in run.metadata["start"]["blop_suggestions"]]
         n_energies = self._energies.size
         expected_images = len(suggestion_ids) * n_energies
         if image_stack.shape[0] != expected_images:
@@ -137,11 +146,11 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             min_intensity = float(np.min(summary["total"]))
             centroid_span = float(np.hypot(np.ptp(summary["x_centroid"]), np.ptp(summary["y_centroid"])))
             alignment_score = (
-                centroid_rms_error**2
-                + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error**2
-                + BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT * centroid_span**2
-                + BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT * fwhm**2
-                + BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT * max_fwhm**2
+                centroid_rms_error
+                + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error
+                + BMM_ENERGY_ALIGNMENT_CENTROID_SPAN_WEIGHT * centroid_span
+                + BMM_ENERGY_ALIGNMENT_FWHM_WEIGHT * fwhm
+                + BMM_ENERGY_ALIGNMENT_MAX_FWHM_WEIGHT * max_fwhm
             )
             outcomes.append(
                 {
@@ -159,8 +168,8 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             )
         return outcomes
 
-    def __call__(self, uid: Any, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-        return self._evaluate_run(str(uid), suggestions)
+    def __call__(self, uid: Hashable, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        return self._evaluate_run(uid, suggestions)
 
 
 class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
@@ -211,7 +220,7 @@ class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
             return uid
         return TiledQueueAcquisition(correlation_uid=str(uid))
 
-    def _before_image_retry(self, uid: str) -> None:
+    def _before_image_retry(self, uid: Hashable) -> None:
         if self._active_acquisition is not None:
             self._check_queue_state(self._active_acquisition)
 
