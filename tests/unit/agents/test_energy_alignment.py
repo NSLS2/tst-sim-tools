@@ -23,9 +23,11 @@ from tst_sim_tools.agents.energy_alignment import (
     MIN_INTENSITY,
     VERTICAL_POSITION_ERROR,
     EnergyAlignmentEvalutation,
+    TiledWebsocketEnergyAlignmentEvaluation,
     build_qs_agent,
     build_re_agent,
 )
+from tst_sim_tools.agents.tiled_queueserver import CORRELATION_UID_KEY, TiledQueueAcquisition
 from tst_sim_tools.devices.materials import XRTCrystalSi
 from tst_sim_tools.devices.mirrors import XRTOpticalElement, XRTToroidMirror
 from tst_sim_tools.devices.sources import XRTWiggler
@@ -55,7 +57,7 @@ class FakeField:
 
 class FakeRun:
     def __init__(self, images: np.ndarray, suggestion_ids: list[str]) -> None:
-        self.metadata = {
+        self.metadata: dict[str, Any] = {
             "start": {
                 "blop_suggestions": [{"_id": suggestion_id} for suggestion_id in suggestion_ids],
             }
@@ -127,6 +129,66 @@ class FailingClient:
 
     def __getitem__(self, uid: str):
         raise self.error
+
+
+class CallbackSignal:
+    def __init__(self) -> None:
+        self.callbacks = []
+
+    def add_callback(self, callback) -> None:
+        self.callbacks.append(callback)
+
+
+class FakeSubscription:
+    def __init__(self, update=None) -> None:
+        self.child_created = CallbackSignal()
+        self.child_metadata_updated = CallbackSignal()
+        self.update = update
+        self.start_calls = []
+        self.disconnected = False
+
+    def start(self, *, start: int | None, max_size: int) -> None:
+        self.start_calls.append((start, max_size))
+        if self.update is not None:
+            for callback in self.child_created.callbacks:
+                callback(self.update)
+
+    def disconnect(self) -> None:
+        self.disconnected = True
+
+
+class SearchableClient:
+    def __init__(self, runs: dict[str, FakeRun], search_uids=(), subscription=None) -> None:
+        self.runs = runs
+        self.search_uids = search_uids
+        self.subscription = subscription
+        self.subscribe_calls = 0
+
+    def __getitem__(self, uid: str) -> FakeRun:
+        return self.runs[uid]
+
+    def search(self, query) -> dict[str, FakeRun]:
+        return {uid: self.runs[uid] for uid in self.search_uids}
+
+    def subscribe(self) -> FakeSubscription:
+        self.subscribe_calls += 1
+        if self.subscription is None:
+            raise AssertionError("A completed matching run should not open a websocket")
+        return self.subscription
+
+
+def make_tiled_evaluator(client, *, re_manager=None, queue_poll_period: float = 0.0):
+    return TiledWebsocketEnergyAlignmentEvaluation(
+        client,
+        image_key="screen_image",
+        target_centroid=(2.0, 2.0),
+        energies=(7000.0, 7100.0),
+        re_manager=re_manager,
+        threshold=0.0,
+        blur=0.0,
+        queue_poll_period=queue_poll_period,
+        image_poll_period=0.0,
+    )
 
 
 def alignment_images() -> np.ndarray:
@@ -299,6 +361,72 @@ def test_energy_alignment_evaluation_validates_image_count() -> None:
     assert str(caught.value) == "Expected 4 image(s) from Tiled for 2 suggestion(s) and 2 energy point(s), but got 3"
 
 
+def test_tiled_evaluation_uses_completed_correlated_run() -> None:
+    run = FakeRun(alignment_images()[:2], ["trial-0"])
+    run.metadata["start"][CORRELATION_UID_KEY] = "correlation-uid"
+    run.metadata["stop"] = {"exit_status": "success"}
+    client = SearchableClient({"run-uid": run}, search_uids=("run-uid",))
+    acquisition = TiledQueueAcquisition(correlation_uid="correlation-uid", item_uid="item-uid")
+
+    outcomes = make_tiled_evaluator(client)(acquisition, suggestions=[])
+
+    assert outcomes[0]["_id"] == "trial-0"
+    assert acquisition.run_uid == "run-uid"
+    assert client.subscribe_calls == 0
+
+
+def test_tiled_evaluation_consumes_websocket_run_and_disconnects() -> None:
+    run = FakeRun(alignment_images()[:2], ["trial-0"])
+    run.metadata["start"][CORRELATION_UID_KEY] = "correlation-uid"
+    run.metadata["stop"] = {"exit_status": "success"}
+    update = SimpleNamespace(key="run-uid", metadata=run.metadata)
+    subscription = FakeSubscription(update)
+    client = SearchableClient({"run-uid": run}, subscription=subscription)
+    acquisition = TiledQueueAcquisition(correlation_uid="correlation-uid", item_uid="item-uid")
+
+    outcomes = make_tiled_evaluator(client)(acquisition, suggestions=[])
+
+    assert outcomes[0]["_id"] == "trial-0"
+    assert acquisition.run_uid == "run-uid"
+    assert subscription.start_calls == [(0, 10_000_000)]
+    assert subscription.disconnected is True
+
+
+def test_tiled_evaluation_propagates_failed_run() -> None:
+    run = FakeRun(alignment_images()[:2], ["trial-0"])
+    run.metadata["start"][CORRELATION_UID_KEY] = "correlation-uid"
+    run.metadata["stop"] = {"exit_status": "fail", "reason": "detector failed"}
+    client = SearchableClient({"run-uid": run}, search_uids=("run-uid",))
+
+    with pytest.raises(RuntimeError, match="detector failed"):
+        make_tiled_evaluator(client)(TiledQueueAcquisition("correlation-uid"), suggestions=[])
+
+    assert client.subscribe_calls == 0
+
+
+def test_tiled_evaluation_propagates_queue_failure_before_run(mocker) -> None:
+    subscription = FakeSubscription()
+    client = SearchableClient({}, subscription=subscription)
+    re_manager = mocker.Mock()
+    re_manager.queue_get.return_value = {"running_item": {}, "items": []}
+    re_manager.history_get.return_value = {
+        "items": [
+            {
+                "item_uid": "item-uid",
+                "result": {"exit_status": "failed", "reason": "plan preparation failed"},
+            }
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="plan preparation failed"):
+        make_tiled_evaluator(client, re_manager=re_manager)(
+            TiledQueueAcquisition("correlation-uid", item_uid="item-uid"), suggestions=[]
+        )
+
+    assert subscription.start_calls == [(0, 10_000_000)]
+    assert subscription.disconnected is True
+
+
 def fake_agent(mocker):
     agent = SimpleNamespace(ax_client=mocker.Mock())
     return agent
@@ -377,13 +505,11 @@ def test_build_re_agent_wires_dofs_objective_evaluator_and_acquisition(run_engin
     )
 
 
-def test_build_qs_agent_wires_remote_dispatcher_and_queue_plan(mocker) -> None:
+def test_build_qs_agent_wires_tiled_websocket_evaluation_and_queue_plan(mocker) -> None:
     re_manager = cast(REManagerAPI, object())
     tiled_client = object()
-    dispatcher = object()
-    remote_dispatcher = mocker.patch("tst_sim_tools.agents.energy_alignment.RemoteDispatcher", return_value=dispatcher)
     agent = fake_agent(mocker)
-    agent_type = mocker.patch("tst_sim_tools.agents.energy_alignment.QueueserverAgent", return_value=agent)
+    agent_type = mocker.patch("tst_sim_tools.agents.energy_alignment.TiledQueueserverAgent", return_value=agent)
 
     result = build_qs_agent(
         re_manager,
@@ -397,13 +523,15 @@ def test_build_qs_agent_wires_remote_dispatcher_and_queue_plan(mocker) -> None:
         threshold=0.1,
         blur=0.5,
         checkpoint_path="/tmp/qs-agent.json",
+        queue_poll_period=0.25,
+        websocket_start=7,
+        websocket_max_size=2048,
+        autostart=False,
     )
 
     assert result is agent
-    remote_dispatcher.assert_called_once_with("127.0.0.1:45105")
-    args = agent_type.call_args.args
+    assert agent_type.call_args.args == (re_manager,)
     kwargs = agent_type.call_args.kwargs
-    assert args == (re_manager, dispatcher)
     assert kwargs["sensors"] == ["screen"]
     assert [(dof.actuator, dof.name, dof.bounds) for dof in kwargs["dofs"]] == [
         ("dcm_c2.roll", "dcm_c2-roll", BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS),
@@ -424,15 +552,20 @@ def test_build_qs_agent_wires_remote_dispatcher_and_queue_plan(mocker) -> None:
         "band": 2.0,
     }
     evaluator = kwargs["evaluation_function"]
-    assert isinstance(evaluator, EnergyAlignmentEvalutation)
+    assert isinstance(evaluator, TiledWebsocketEnergyAlignmentEvaluation)
     assert evaluator._client is tiled_client
+    assert evaluator._re_manager is re_manager
     assert evaluator._image_key == "screen_image"
     assert evaluator._target_centroid == (2.0, 2.0)
     np.testing.assert_array_equal(evaluator._energies, [7000.0, 7100.0])
     assert evaluator._threshold == 0.1
     assert evaluator._blur == 0.5
+    assert evaluator._queue_poll_period == 0.25
+    assert evaluator._websocket_start == 7
+    assert evaluator._websocket_max_size == 2048
     assert kwargs["outcome_constraints"] is BMM_ENERGY_ALIGNMENT_OUTCOME_CONSTRAINTS
     assert kwargs["checkpoint_path"] == "/tmp/qs-agent.json"
+    assert kwargs["autostart"] is False
     agent.ax_client.configure_generation_strategy.assert_called_once_with(
         method="fast",
         initialization_budget=BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET,

@@ -168,15 +168,8 @@ class TiledQueueserverOptimizationRunner:
 
     def stop(self) -> None:
         """Stop after the in-flight evaluation returns and resolve the current future with partial results."""
-        with self._state_lock:
-            self._stop_event.set()
-            result = (
-                self._state.build_result()
-                if self._state is not None
-                else OptimizationResult(iterations_completed=0, num_points=0, uids=())
-            )
-            self._resolve_future(result)
-        logger.info("Tiled-backed Queue Server optimization stopped")
+        self._stop_event.set()
+        logger.info("Tiled-backed Queue Server optimization stopping after the current evaluation")
 
     def _start_worker(
         self,
@@ -297,9 +290,7 @@ class TiledQueueserverOptimizationRunner:
 
                 suggestions = None
         except Exception as exc:
-            logger.exception(
-                "Unhandled exception in Tiled-backed optimization worker. Optimization has been stopped."
-            )
+            logger.exception("Unhandled exception in Tiled-backed optimization worker. Optimization has been stopped.")
             with self._state_lock:
                 failed_suggestions = self._state.current_suggestions if self._state is not None else ()
                 self._fail_future(exc)
