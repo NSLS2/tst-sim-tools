@@ -13,6 +13,7 @@ from typing import Any
 from blop.ax.dof import DOF, DOFConstraint
 from blop.ax.objective import Objective, OutcomeConstraint, to_ax_objective_str
 from blop.ax.optimizer import AxOptimizer
+from blop.ax.queueserver_agent import QueueserverAgent
 from blop.protocols import (
     ID_KEY,
     CanRegisterSuggestions,
@@ -21,12 +22,10 @@ from blop.protocols import (
     QueueserverOptimizationProblem,
     TrialFaultAware,
 )
+from blop.queueserver import CORRELATION_UID_KEY, DEFAULT_ACQUIRE_PLAN_NAME, OptimizationResult
 from bluesky_queueserver_api import BPlan
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_ACQUIRE_PLAN_NAME = "default_acquire"
-CORRELATION_UID_KEY = "blop_correlation_uid"
 
 
 @dataclass(slots=True)
@@ -41,15 +40,6 @@ class TiledQueueAcquisition:
     def __hash__(self) -> int:
         """Hash by immutable submission identifiers."""
         return hash((self.correlation_uid, self.item_uid, self.plan_name))
-
-
-@dataclass(frozen=True)
-class OptimizationResult:
-    """Summary returned when a Tiled-backed Queue Server optimization finishes."""
-
-    iterations_completed: int
-    num_points: int
-    uids: tuple[str, ...]
 
 
 @dataclass
@@ -308,8 +298,8 @@ class TiledQueueserverOptimizationRunner:
         self._problem.optimizer.checkpoint()
 
 
-class TiledQueueserverAgent:
-    """Ax-backed Blop-style agent that uses Tiled websocket-aware evaluation functions."""
+class TiledQueueserverAgent(QueueserverAgent):
+    """Blop Queue Server agent using a Tiled-backed blocking optimization runner."""
 
     def __init__(
         self,
@@ -328,12 +318,13 @@ class TiledQueueserverAgent:
         **kwargs: Any,
     ) -> None:
         self._sensors = sensors
-        self._actuators: list[str] = []
+        actuators: list[str] = []
         for dof in dofs:
             actuator = dof.actuator
             if actuator is None:
                 continue
-            self._actuators.append(actuator if isinstance(actuator, str) else actuator.name)
+            actuators.append(actuator if isinstance(actuator, str) else actuator.name)
+        self._actuators = actuators
         self._evaluation_function = evaluation_function
         self._acquisition_plan = acquisition_plan
         self._acquisition_plan_kwargs = acquisition_plan_kwargs or {}
@@ -351,79 +342,3 @@ class TiledQueueserverAgent:
             self.to_optimization_problem(),
             TiledQueueserverClient(re_manager_api, autostart=autostart),
         )
-
-    @property
-    def ax_client(self) -> Any:
-        """Underlying Ax client."""
-        return self._optimizer.ax_client
-
-    @property
-    def checkpoint_path(self) -> str | None:
-        """Optimizer checkpoint path."""
-        return self._optimizer.checkpoint_path
-
-    @checkpoint_path.setter
-    def checkpoint_path(self, value: str) -> None:
-        self._optimizer.checkpoint_path = value
-
-    @property
-    def evaluation_function(self) -> EvaluationFunction:
-        """Evaluation function."""
-        return self._evaluation_function
-
-    @property
-    def actuators(self) -> Sequence[str]:
-        """Actuator names used in submitted plans."""
-        return self._actuators
-
-    @property
-    def sensors(self) -> Sequence[str]:
-        """Sensor names used in submitted plans."""
-        return self._sensors
-
-    @property
-    def acquisition_plan(self) -> str | None:
-        """Acquisition plan name."""
-        return self._acquisition_plan
-
-    @property
-    def current_iteration(self) -> int:
-        """Current runner iteration."""
-        return self._runner.current_iteration
-
-    def suggest(self, num_points: int = 1) -> Sequence[Mapping[str, Any]]:
-        """Ask the optimizer for candidate parameterizations."""
-        return self._optimizer.suggest(num_points)
-
-    def ingest(self, points: Sequence[Mapping[str, Any]]) -> None:
-        """Ingest evaluated outcome mappings into the optimizer."""
-        self._optimizer.ingest(points)
-
-    def checkpoint(self) -> None:
-        """Write an optimizer checkpoint."""
-        self._optimizer.checkpoint()
-
-    def stop(self) -> None:
-        """Stop the queueserver runner after the in-flight evaluation."""
-        self._runner.stop()
-
-    def to_optimization_problem(self) -> QueueserverOptimizationProblem:
-        """Convert this agent to Blop's Queue Server optimization problem dataclass."""
-        return QueueserverOptimizationProblem(
-            optimizer=self._optimizer,
-            actuators=self._actuators,
-            sensors=self._sensors,
-            evaluation_function=self._evaluation_function,
-            acquisition_plan=self._acquisition_plan,
-            acquisition_plan_kwargs=self._acquisition_plan_kwargs,
-        )
-
-    def run(
-        self, iterations: int = 1, n_points: int = 1, checkpoint_interval: int | None = None
-    ) -> Future[OptimizationResult]:
-        """Run the optimization loop asynchronously."""
-        return self._runner.run(iterations=iterations, num_points=n_points, checkpoint_interval=checkpoint_interval)
-
-    def submit_suggestions(self, suggestions: Sequence[Mapping[str, Any]]) -> Future[OptimizationResult]:
-        """Evaluate explicit suggestions asynchronously."""
-        return self._runner.submit_suggestions(suggestions)
