@@ -11,6 +11,7 @@ from tst_sim_tools.agents.tiled_queueserver import (
     CORRELATION_UID_KEY,
     OptimizationResult,
     TiledQueueAcquisition,
+    TiledQueueserverAgent,
     TiledQueueserverClient,
     TiledQueueserverOptimizationRunner,
 )
@@ -103,6 +104,16 @@ def test_client_rejects_closed_worker_environment(mocker) -> None:
 
     with pytest.raises(RuntimeError, match="queueserver environment is not open"):
         client.check_environment()
+
+
+def test_agent_closes_evaluation_resources(mocker) -> None:
+    evaluation = mocker.Mock()
+    agent = object.__new__(TiledQueueserverAgent)
+    agent._evaluation_function = evaluation
+
+    agent.close()
+
+    evaluation.close.assert_called_once_with()
 
 
 def test_runner_completes_suggest_submit_evaluate_ingest_loop() -> None:

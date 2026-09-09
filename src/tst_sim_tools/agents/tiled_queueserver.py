@@ -342,3 +342,9 @@ class TiledQueueserverAgent(QueueserverAgent):
             self.to_optimization_problem(),
             TiledQueueserverClient(re_manager_api, autostart=autostart),
         )
+
+    def close(self) -> None:
+        """Close resources owned by the evaluation function."""
+        close = getattr(self._evaluation_function, "close", None)
+        if close is not None:
+            close()

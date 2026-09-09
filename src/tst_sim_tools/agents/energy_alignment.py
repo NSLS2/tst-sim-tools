@@ -1,10 +1,9 @@
 """Blop agent for energy dependent alignment."""
 
-import logging
 import threading
 import time
+from collections import deque
 from collections.abc import Hashable, Mapping, Sequence
-from dataclasses import dataclass
 from functools import partial
 from typing import Any, cast
 
@@ -14,6 +13,7 @@ from blop.ax import Agent, Objective, OutcomeConstraint, RangeDOF
 from blop.protocols import AcquisitionPlan, EvaluationFunction
 from bluesky.protocols import Readable
 from bluesky_queueserver_api.http import REManagerAPI
+from bluesky_tiled_plugins import BlueskyStreamUpdate, subscribe_to_stream
 
 from ..analysis.image import analyze_energy_scan, image_series
 from ..devices.materials import XRTCrystalSi
@@ -21,8 +21,6 @@ from ..devices.mirrors import XRTOpticalElement, XRTToroidMirror
 from ..devices.sources import XRTWiggler
 from ..plans.bmm import acquire_with_energy_scan
 from .tiled_queueserver import CORRELATION_UID_KEY, TiledQueueAcquisition, TiledQueueserverAgent
-
-logger = logging.getLogger(__name__)
 
 ALIGNMENT_SCORE = "alignment_score"
 CENTROID_RMS_ERROR = "centroid_rms_error"
@@ -56,13 +54,6 @@ BMM_ENERGY_ALIGNMENT_DCM_C2_ROLL_BOUNDS = (-2e-4, 1e-4)
 BMM_ENERGY_ALIGNMENT_TFM_YAW_BOUNDS = (-1e-4, 1e-4)
 BMM_ENERGY_ALIGNMENT_TFM_LATERAL_BOUNDS = (-0.5, 0.65)
 BMM_ENERGY_ALIGNMENT_INITIALIZATION_BUDGET = 12
-
-
-@dataclass
-class _TiledRunWaitState:
-    uid: str | None = None
-    stop: Mapping[str, Any] | None = None
-    error: Exception | None = None
 
 
 class EnergyAlignmentEvalutation(EvaluationFunction):
@@ -113,8 +104,10 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
 
     def _evaluate_run(self, uid: Hashable, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         run, images = self._poll_for_run_images(uid)
-        image_stack = image_series(images)
-        suggestion_ids = [suggestion["_id"] for suggestion in run.metadata["start"]["blop_suggestions"]]
+        return self._evaluate_image_stack(run.metadata["start"], image_series(images))
+
+    def _evaluate_image_stack(self, start_document: Mapping[str, Any], image_stack: np.ndarray) -> list[dict[str, Any]]:
+        suggestion_ids = self._suggestion_ids(start_document)
         n_energies = self._energies.size
         expected_images = len(suggestion_ids) * n_energies
         if image_stack.shape[0] != expected_images:
@@ -168,6 +161,9 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             )
         return outcomes
 
+    def _suggestion_ids(self, start_document: Mapping[str, Any]) -> list[Any]:
+        return [suggestion["_id"] for suggestion in start_document["blop_suggestions"]]
+
     def __call__(self, uid: Hashable, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         return self._evaluate_run(uid, suggestions)
 
@@ -188,6 +184,7 @@ class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
         queue_poll_period: float = 5.0,
         websocket_start: int | None = 0,
         websocket_max_size: int = 10_000_000,
+        stream_buffer_size: int = 1024,
         image_poll_period: float = 0.5,
     ) -> None:
         super().__init__(
@@ -199,155 +196,114 @@ class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
             blur=blur,
             image_poll_period=image_poll_period,
         )
+        if stream_buffer_size < 1:
+            raise ValueError("stream_buffer_size must be positive")
         self._re_manager = re_manager
         self._queue_poll_period = queue_poll_period
-        self._websocket_start = websocket_start
-        self._websocket_max_size = websocket_max_size
-        self._active_acquisition: TiledQueueAcquisition | None = None
+        self._condition = threading.Condition()
+        self._updates: deque[BlueskyStreamUpdate] = deque(maxlen=stream_buffer_size)
+        self._evaluation_lock = threading.Lock()
+        self._closed = False
+        self._subscription = subscribe_to_stream(
+            self._client,
+            "primary",
+            self._image_key,
+            self._record_update,
+            start=websocket_start,
+            max_size=websocket_max_size,
+            run_filter=self._is_blop_run,
+        )
 
     def __call__(self, uid: Any, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-        acquisition = self._coerce_acquisition(uid)
-        run_uid = self._wait_for_correlated_run(acquisition)
-        acquisition.run_uid = run_uid
-        self._active_acquisition = acquisition
+        if not self._evaluation_lock.acquire(blocking=False):
+            raise RuntimeError("Tiled energy-alignment evaluation is already running")
         try:
-            return self._evaluate_run(run_uid, suggestions)
+            acquisition = self._coerce_acquisition(uid)
+            run_uid, start_document, image_stack = self._wait_for_correlated_images(acquisition)
+            acquisition.run_uid = run_uid
+            return self._evaluate_image_stack(start_document, image_stack)
         finally:
-            self._active_acquisition = None
+            self._evaluation_lock.release()
 
     def _coerce_acquisition(self, uid: Any) -> TiledQueueAcquisition:
         if isinstance(uid, TiledQueueAcquisition):
             return uid
         return TiledQueueAcquisition(correlation_uid=str(uid))
 
-    def _before_image_retry(self, uid: Hashable) -> None:
-        if self._active_acquisition is not None:
-            self._check_queue_state(self._active_acquisition)
+    def _record_update(self, update: BlueskyStreamUpdate) -> None:
+        with self._condition:
+            if self._closed:
+                return
+            self._updates.append(update)
+            self._condition.notify_all()
 
-    def _wait_for_correlated_run(self, acquisition: TiledQueueAcquisition) -> str:
-        condition = threading.Condition()
-        state = _TiledRunWaitState()
-
-        def record(uid: str, metadata: Mapping[str, Any]) -> None:
-            try:
-                if not self._metadata_matches(metadata, acquisition.correlation_uid):
-                    return
-                stop = self._stop_document(metadata)
-                if stop is not None:
-                    self._raise_for_stop(uid, stop)
-                with condition:
-                    state.uid = uid
-                    state.stop = stop
-                    condition.notify_all()
-            except Exception as exc:
-                with condition:
-                    state.error = exc
-                    condition.notify_all()
-
-        existing = self._find_existing_run(acquisition)
-        if existing is not None:
-            record(*existing)
-        with condition:
-            if state.error is not None:
-                raise state.error
-            if state.uid is not None and state.stop is not None:
-                return state.uid
-
-        subscription = self._client.subscribe()
-
-        def on_child_created(update: Any) -> None:
-            metadata = getattr(update, "metadata", {})
-            if isinstance(metadata, Mapping):
-                record(str(update.key), metadata)
-
-        def on_child_metadata_updated(update: Any) -> None:
-            metadata = self._read_run_metadata(str(update.key))
-            if metadata is not None:
-                record(str(update.key), metadata)
-
-        callbacks = [on_child_created, on_child_metadata_updated]
-        subscription.child_created.add_callback(on_child_created)
-        subscription.child_metadata_updated.add_callback(on_child_metadata_updated)
-
-        def run_subscription() -> None:
-            try:
-                subscription.start(start=self._websocket_start, max_size=self._websocket_max_size)
-            except Exception as exc:
-                with condition:
-                    state.error = exc
-                    condition.notify_all()
-
-        subscription_thread = threading.Thread(
-            target=run_subscription,
-            name=f"tiled-energy-alignment-{acquisition.correlation_uid}",
-            daemon=True,
+    def _is_blop_run(self, update: Any) -> bool:
+        start_document = update.metadata.get("start", {})
+        return (
+            isinstance(start_document, Mapping)
+            and CORRELATION_UID_KEY in start_document
+            and "blop_suggestions" in start_document
         )
-        subscription_thread.start()
-        try:
-            existing = self._find_existing_run(acquisition)
-            if existing is not None:
-                record(*existing)
-            while True:
-                with condition:
-                    if state.error is not None:
-                        raise state.error
-                    if state.uid is not None and state.stop is not None:
-                        return state.uid
-                    condition.wait(timeout=self._queue_poll_period)
-                self._check_queue_state(acquisition)
-                existing = self._find_existing_run(acquisition)
-                if existing is not None:
-                    record(*existing)
-                _ = callbacks
-        finally:
-            try:
-                subscription.disconnect()
-            except Exception as exc:
-                logger.debug("Failed to disconnect Tiled subscription: %s", exc)
-            subscription_thread.join(timeout=1.0)
 
-    def _metadata_matches(self, metadata: Mapping[str, Any], correlation_uid: str) -> bool:
-        start = metadata.get("start", {})
-        return isinstance(start, Mapping) and start.get(CORRELATION_UID_KEY) == correlation_uid
+    def close(self) -> None:
+        """Disconnect the persistent Tiled stream subscription."""
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+            self._updates.clear()
+            self._condition.notify_all()
+        self._subscription.disconnect()
 
-    def _stop_document(self, metadata: Mapping[str, Any]) -> Mapping[str, Any] | None:
-        stop = metadata.get("stop")
-        return stop if isinstance(stop, Mapping) else None
+    def _wait_for_correlated_images(self, acquisition: TiledQueueAcquisition) -> tuple[str, Mapping[str, Any], np.ndarray]:
 
-    def _raise_for_stop(self, uid: str, stop: Mapping[str, Any]) -> None:
-        exit_status = stop.get("exit_status")
-        if exit_status != "success":
-            reason = stop.get("reason") or "(no reason given)"
-            raise RuntimeError(f"Acquisition run {uid!r} ended with status {exit_status!r}: {reason}")
+        image_chunks: dict[str, list[np.ndarray]] = {}
+        image_counts: dict[str, int] = {}
+        last_sequences: dict[str, int] = {}
+        while True:
+            with self._condition:
+                if self._closed:
+                    raise RuntimeError("Tiled stream subscription is closed")
+                pending = tuple(self._updates)
+                self._updates.clear()
+                if not pending:
+                    self._condition.wait(timeout=self._queue_poll_period)
+                    if self._closed:
+                        raise RuntimeError("Tiled stream subscription is closed")
+                    pending = tuple(self._updates)
+                    self._updates.clear()
+            for update in pending:
+                chunk = self._read_correlated_update_images(update, acquisition.correlation_uid)
+                if chunk is None:
+                    continue
+                run_uid, start_document, images, sequence = chunk
+                previous_sequence = last_sequences.get(run_uid)
+                if previous_sequence is not None:
+                    if sequence <= previous_sequence:
+                        continue
+                    if sequence != previous_sequence + 1:
+                        raise RuntimeError(
+                            f"Gap in Tiled stream updates for run {run_uid!r}: "
+                            f"expected sequence {previous_sequence + 1}, got {sequence}"
+                        )
+                last_sequences[run_uid] = sequence
+                image_chunks.setdefault(run_uid, []).append(images)
+                image_counts[run_uid] = image_counts.get(run_uid, 0) + images.shape[0]
+                expected_images = len(self._suggestion_ids(start_document)) * self._energies.size
+                if image_counts[run_uid] >= expected_images:
+                    return run_uid, start_document, np.concatenate(image_chunks[run_uid], axis=0)
+            self._check_queue_state(acquisition)
 
-    def _find_existing_run(self, acquisition: TiledQueueAcquisition) -> tuple[str, Mapping[str, Any]] | None:
-        for uid in self._search_runs_by_correlation(acquisition.correlation_uid):
-            metadata = self._read_run_metadata(uid)
-            if metadata is not None and self._metadata_matches(metadata, acquisition.correlation_uid):
-                return uid, metadata
-        for uid in self._history_run_uids(acquisition):
-            metadata = self._read_run_metadata(uid)
-            if metadata is not None and self._metadata_matches(metadata, acquisition.correlation_uid):
-                return uid, metadata
-        return None
-
-    def _search_runs_by_correlation(self, correlation_uid: str) -> list[str]:
-        try:
-            from tiled.queries import Eq
-
-            results = self._client.search(Eq(f"start.{CORRELATION_UID_KEY}", correlation_uid))
-            return [str(key) for key, _run in results.items()]
-        except Exception as exc:
-            logger.debug("Tiled correlation search did not return runs: %s", exc)
-            return []
-
-    def _read_run_metadata(self, uid: str) -> Mapping[str, Any] | None:
-        try:
-            metadata = self._client[uid].metadata
-        except Exception as exc:
-            logger.debug("Unable to read Tiled metadata for %s: %s", uid, exc)
+    def _read_correlated_update_images(
+        self, update: BlueskyStreamUpdate, correlation_uid: str
+    ) -> tuple[str, Mapping[str, Any], np.ndarray, int] | None:
+        if update.start_document.get(CORRELATION_UID_KEY) != correlation_uid:
             return None
-        return metadata if isinstance(metadata, Mapping) else None
+        try:
+            image_stack = image_series(update.data())
+        except KeyError:
+            return None
+        return update.run_uid, update.start_document, image_stack, update.sequence
 
     def _check_queue_state(self, acquisition: TiledQueueAcquisition) -> None:
         if self._re_manager is None or acquisition.item_uid is None:
@@ -386,30 +342,6 @@ class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
         if status in {"failed", "aborted", "stopped"}:
             return str(status)
         return None
-
-    def _history_run_uids(self, acquisition: TiledQueueAcquisition) -> list[str]:
-        if acquisition.item_uid is None:
-            return []
-        history_item = self._history_item(acquisition.item_uid)
-        if history_item is None:
-            return []
-        return sorted(
-            {
-                value
-                for value in self._walk_values(history_item)
-                if isinstance(value, str) and len(value) == 36 and value.count("-") == 4
-            }
-        )
-
-    def _walk_values(self, value: Any) -> list[Any]:
-        values = [value]
-        if isinstance(value, Mapping):
-            for child in value.values():
-                values.extend(self._walk_values(child))
-        elif isinstance(value, list | tuple):
-            for child in value:
-                values.extend(self._walk_values(child))
-        return values
 
 
 def build_re_agent(
@@ -531,6 +463,7 @@ def build_qs_agent(
     queue_poll_period: float = 5.0,
     websocket_start: int | None = 0,
     websocket_max_size: int = 10_000_000,
+    stream_buffer_size: int = 1024,
     autostart: bool = True,
 ) -> TiledQueueserverAgent:
     """Build a Queue Server agent that waits for energy-alignment data through Tiled websockets.
@@ -563,6 +496,8 @@ def build_qs_agent(
         Tiled stream sequence to replay from. ``0`` asks Tiled for all retained cached events.
     websocket_max_size
         Maximum websocket message size in bytes.
+    stream_buffer_size
+        Maximum number of pending physical Tiled updates retained by the persistent subscription.
     autostart
         Whether Queue Server should autostart queued plans.
 
@@ -624,6 +559,7 @@ def build_qs_agent(
             queue_poll_period=queue_poll_period,
             websocket_start=websocket_start,
             websocket_max_size=websocket_max_size,
+            stream_buffer_size=stream_buffer_size,
         ),
         acquisition_plan=acquisition_plan_name,
         acquisition_plan_kwargs=acquisition_plan_kwargs,

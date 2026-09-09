@@ -1,4 +1,6 @@
 import math
+import queue
+import threading
 from pathlib import Path
 from typing import cast
 
@@ -7,7 +9,7 @@ import numpy as np
 import pytest
 from bluesky import plan_stubs as bps
 from bluesky.run_engine import call_in_bluesky_event_loop
-from bluesky_tiled_plugins import TiledWriter
+from bluesky_tiled_plugins import TiledWriter, subscribe_to_stream
 from ophyd_async.core import StaticFilenameProvider, StaticPathProvider, callback_on_mock_put, init_devices, set_mock_value
 from tiled import catalog
 from tiled.client import Context, from_context
@@ -24,7 +26,9 @@ from tst_sim_tools.agents.energy_alignment import (
     MIN_INTENSITY,
     VERTICAL_POSITION_ERROR,
     EnergyAlignmentEvalutation,
+    TiledWebsocketEnergyAlignmentEvaluation,
 )
+from tst_sim_tools.agents.tiled_queueserver import CORRELATION_UID_KEY, TiledQueueAcquisition
 from tst_sim_tools.analysis.image import image_series
 from tst_sim_tools.devices.detectors import XRTScreenAcquireStatus, XRTScreenDetector
 from tst_sim_tools.devices.materials import XRTCrystalSi
@@ -186,3 +190,130 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
         assert outcome[FWHM] == 1.0
         assert outcome[MAX_FWHM] == 1.0
         assert outcome[ALIGNMENT_SCORE] == pytest.approx(math.sqrt(0.5) + 0.25 + 0.1 + 0.005 + 0.0025)
+
+
+def test_tiled_websocket_evaluation_uses_stream_data_before_stop(tmp_path: Path, mocker) -> None:
+    catalog_dir = tmp_path / "streaming-tiled"
+    catalog_dir.mkdir()
+    tiled_catalog = catalog.in_memory(
+        writable_storage={"filesystem": str(catalog_dir), "sql": f"duckdb:///{catalog_dir}/catalog.db"},
+        readable_storage=[str(catalog_dir)],
+        cache_config={"uri": "memory://", "data_ttl": 60, "seq_ttl": 60},
+    )
+
+    with Context.from_app(build_app(tiled_catalog)) as context:
+        client = from_context(context)
+        writer = TiledWriter(client, batch_size=1, max_array_size=0)
+        subscribed = threading.Event()
+
+        def wrapped_subscribe_to_stream(*args, **kwargs):
+            subscription = subscribe_to_stream(*args, **kwargs)
+            subscribed.set()
+            return subscription
+
+        mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", side_effect=wrapped_subscribe_to_stream)
+        evaluator = TiledWebsocketEnergyAlignmentEvaluation(
+            client,
+            image_key="screen_image",
+            target_centroid=(2.0, 2.0),
+            energies=(7000.0, 7100.0),
+            threshold=0.0,
+            blur=0.0,
+            queue_poll_period=0.05,
+            image_poll_period=0.0,
+        )
+        assert subscribed.is_set()
+        acquisition = TiledQueueAcquisition(correlation_uid="corr-1", item_uid="item-1")
+        suggestions = [{"_id": "trial-0", "dcm_c2-roll": 0.0, "m2-yaw": 0.0, "m2-center_x": 0.0}]
+        results: queue.Queue[tuple[str, object]] = queue.Queue()
+
+        def evaluate() -> None:
+            try:
+                results.put(("outcomes", evaluator(acquisition, suggestions)))
+            except BaseException as error:
+                results.put(("error", error))
+
+        thread = threading.Thread(target=evaluate, daemon=True)
+        thread.start()
+        run_uid = "stream-run"
+        descriptor_uid = "stream-descriptor"
+        expected_images = np.zeros((2, 1, 5, 5), dtype=np.float64)
+        expected_images[0, 0, 2, 2] = 20_000.0
+        expected_images[1, 0, 2, 3] = 20_000.0
+
+        try:
+            writer(
+                "start",
+                {
+                    "uid": run_uid,
+                    "time": 0.0,
+                    CORRELATION_UID_KEY: acquisition.correlation_uid,
+                    "blop_suggestions": suggestions,
+                },
+            )
+            writer(
+                "descriptor",
+                {
+                    "uid": descriptor_uid,
+                    "run_start": run_uid,
+                    "time": 1.0,
+                    "name": "primary",
+                    "data_keys": {
+                        "screen_image": {
+                            "source": "sim",
+                            "dtype": "array",
+                            "dtype_numpy": "<f8",
+                            "shape": [1, 5, 5],
+                            "object_name": "screen",
+                        }
+                    },
+                    "object_keys": {"screen": ["screen_image"]},
+                },
+            )
+            writer(
+                "event",
+                {
+                    "uid": "event-1",
+                    "descriptor": descriptor_uid,
+                    "time": 2.0,
+                    "seq_num": 1,
+                    "data": {"screen_image": expected_images[0]},
+                    "timestamps": {"screen_image": 2.0},
+                    "filled": {},
+                },
+            )
+            writer(
+                "event",
+                {
+                    "uid": "event-2",
+                    "descriptor": descriptor_uid,
+                    "time": 3.0,
+                    "seq_num": 2,
+                    "data": {"screen_image": expected_images[1]},
+                    "timestamps": {"screen_image": 3.0},
+                    "filled": {},
+                },
+            )
+            thread.join(timeout=5)
+            kind, value = results.get(timeout=5)
+        finally:
+            writer(
+                "stop",
+                {
+                    "uid": "stream-stop",
+                    "run_start": run_uid,
+                    "time": 10.0,
+                    "exit_status": "success",
+                    "num_events": {"primary": 2},
+                },
+            )
+            evaluator.close()
+
+        if kind == "error":
+            raise cast(BaseException, value)
+        assert kind == "outcomes"
+        outcomes = cast(list[dict[str, float | str]], value)
+        assert acquisition.run_uid == run_uid
+        assert outcomes[0]["_id"] == "trial-0"
+        assert outcomes[0][MIN_INTENSITY] == 20_000.0
+        assert outcomes[0][CENTROID_RMS_ERROR] == pytest.approx(math.sqrt(0.5))

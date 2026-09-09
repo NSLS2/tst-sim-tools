@@ -30,6 +30,7 @@ dependencies = [
   "bluesky>=1.15.1",
   "ophyd-async[ca,pva]",
   "blop[cpu,ax,queueserver]",
+  "bluesky-tiled-plugins @ git+https://github.com/thopkins32/bluesky-tiled-plugins.git@tiled-ws-helpers",
   "scipy>=1.14",
   "xrt==2.0.0b1",
 ]
@@ -50,7 +51,6 @@ dev = [
   "pytest-socket>=0.8.1",
   "ruff",
   "tiled[client,server]>=0.2.14",
-  "bluesky-tiled-plugins>=2.0.9",
 ]
 docs = []
 
@@ -136,6 +136,9 @@ root_package = "tst_sim_tools"
 channels = ["conda-forge"]
 platforms = ["linux-64"]
 
+[tool.pixi.workspace.conda-pypi-map]
+conda-forge = { mapping = { "bluesky-tiled-plugins" = false } }
+
 [tool.pixi.pypi-dependencies]
 tst-sim-tools = { path = ".", editable = true }
 
@@ -155,8 +158,10 @@ hdf5-external-filter-plugins = ">=0.1.0,<0.2"
 blosc-hdf5-plugin = ">=1.0.1,<2"
 databroker = "==2.0.0"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
-bluesky-tiled-plugins = ">=2.0.0"
 ophyd-async = ">=0.20.1,<0.21"
+
+[tool.pixi.feature.startup.pypi-dependencies]
+bluesky-tiled-plugins = { git = "https://github.com/thopkins32/bluesky-tiled-plugins.git", rev = "tiled-ws-helpers" }
 
 [tool.pixi.feature.startup-git.pypi-dependencies]
 tst-sim-tools = { git = "https://github.com/NSLS2/tst-sim-tools.git", rev = "main" }
