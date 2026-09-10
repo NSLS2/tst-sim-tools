@@ -161,9 +161,6 @@ ophyd-async = ">=0.20.1,<0.21"
 [tool.pixi.feature.startup.pypi-dependencies]
 bluesky-tiled-plugins = { git = "https://github.com/thopkins32/bluesky-tiled-plugins.git", rev = "tiled-ws-helpers" }
 
-[tool.pixi.feature.startup-git.pypi-dependencies]
-tst-sim-tools = { git = "https://github.com/NSLS2/tst-sim-tools.git", rev = "main" }
-
 [tool.pixi.feature.startup-local.pypi-dependencies]
 tst-sim-tools = { path = ".", editable = true }
 
@@ -171,6 +168,7 @@ tst-sim-tools = { path = ".", editable = true }
 ipython = "*"
 pyside6 = "*"
 numpy = ">2"
+notebook = ">=7.6.2,<8"
 
 [tool.pixi.feature.qs.dependencies]
 bluesky-queueserver = "*"
@@ -192,11 +190,6 @@ xrt = ">=2.0.0b1"
 [tool.pixi.environments]
 default = { solve-group = "default" }
 ioc = { features = ["ioc"], solve-group = "ioc", no-default-feature = true }
-terminal = { features = [
-  "terminal",
-  "startup",
-  "startup-git",
-], solve-group = "startup-git", no-default-feature = true }
 terminal-local = { features = [
   "terminal",
   "startup",
@@ -221,6 +214,8 @@ start = "TILED=2 ipython -i -m tst_sim_tools.startup"
 
 [tool.pixi.feature.qs.tasks]
 qs-server-local = """
+EPICS_CA_ADDR_LIST=127.0.0.1 \
+EPICS_CA_AUTO_ADDR_LIST=NO \
 start-re-manager \
 --redis-addr localhost:6379 \
 --zmq-control-addr tcp://127.0.0.1:60615 \
@@ -236,6 +231,11 @@ QSERVER_ZMQ_CONTROL_ADDRESS=tcp://localhost:60615 \
 QSERVER_ZMQ_INFO_ADDRESS=tcp://localhost:60625 \
 QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
 uvicorn --host localhost --port 60611 bluesky_httpserver.server:app
+"""
+queue-monitor-local = """
+QSERVER_HTTP_SERVER_API_KEY=secret \
+pixi run -e qs queue-monitor \
+--http-server-uri http://localhost:60611
 """
 
 [tool.pixi.feature.ioc.tasks]
