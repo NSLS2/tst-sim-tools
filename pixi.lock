@@ -39,7 +39,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.13-9_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#a82fb935b36429325728f5b26310b33f3c184bb7
+      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#dcc9a8821c44e814c827c885c3156159acf4f79a
       - pypi: https://files.pythonhosted.org/packages/01/f9/575c8d760eae1fc99651b7cc5efd96ad5379ca4d6b53750b0fb4fe983f34/imagesize-2.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/02/10/5da547df7a391dcde17f59520a231527b8571e6f46fc8efb02ccb370ab12/docutils-0.22.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl
@@ -290,7 +290,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.13-9_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#a82fb935b36429325728f5b26310b33f3c184bb7
+      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#dcc9a8821c44e814c827c885c3156159acf4f79a
       - pypi: https://files.pythonhosted.org/packages/00/b7/e3bf5133d697a08128598c8d0abc5e16377b51465a33756de24fa7dee953/aiosqlite-0.22.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/00/bb/ee19e7d56824c05892f82a3a2abca94fd2345b7de3dc22baac9e65a46acc/adbc_driver_postgresql-1.12.0-py3-none-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/00/c6/a35e38ef5e0db391be79e0e14c019ce378b87d9d7e31d1dfcd451e9d291f/adbc_driver_manager-1.12.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
@@ -615,7 +615,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.13-9_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#a82fb935b36429325728f5b26310b33f3c184bb7
+      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#dcc9a8821c44e814c827c885c3156159acf4f79a
       - pypi: https://files.pythonhosted.org/packages/01/f9/575c8d760eae1fc99651b7cc5efd96ad5379ca4d6b53750b0fb4fe983f34/imagesize-2.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/02/10/5da547df7a391dcde17f59520a231527b8571e6f46fc8efb02ccb370ab12/docutils-0.22.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl
@@ -1347,7 +1347,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-live-0.0.8-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-queueserver-0.0.25-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-queueserver-api-0.0.13-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.10-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.11-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-widgets-0.0.18-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bokeh-3.10.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/boltons-26.1.0-pyhd8ed1ab_0.conda
@@ -1581,7 +1581,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#a82fb935b36429325728f5b26310b33f3c184bb7
+      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#dcc9a8821c44e814c827c885c3156159acf4f79a
       - pypi: https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/15/71/49399acd41f750a906c686bd23c08a2001ccb8dd25f2971003c2ed89c1dd/torch-2.14.0-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/18/53/84099323c2ec4be98d935f63c033ac4151ee83836ca1050ede3b3aadf155/joblib-1.6.0-py3-none-any.whl
@@ -2025,7 +2025,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-base-1.15.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-kafka-0.10.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-queueserver-0.0.25-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.10-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.11-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bokeh-3.10.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/boltons-26.1.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
@@ -2254,7 +2254,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - pypi: git+https://github.com/NSLS2/tst-sim-tools.git?rev=main#62592b882624c6783eeaac79040925d5009a268b
-      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#a82fb935b36429325728f5b26310b33f3c184bb7
+      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#dcc9a8821c44e814c827c885c3156159acf4f79a
       - pypi: https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/15/71/49399acd41f750a906c686bd23c08a2001ccb8dd25f2971003c2ed89c1dd/torch-2.14.0-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/18/53/84099323c2ec4be98d935f63c033ac4151ee83836ca1050ede3b3aadf155/joblib-1.6.0-py3-none-any.whl
@@ -2700,7 +2700,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-kafka-0.10.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-queueserver-0.0.25-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-queueserver-api-0.0.13-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.10-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.11-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/bokeh-3.10.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/boltons-26.1.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
@@ -2929,7 +2929,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#a82fb935b36429325728f5b26310b33f3c184bb7
+      - pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#dcc9a8821c44e814c827c885c3156159acf4f79a
       - pypi: https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/15/71/49399acd41f750a906c686bd23c08a2001ccb8dd25f2971003c2ed89c1dd/torch-2.14.0-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/18/53/84099323c2ec4be98d935f63c033ac4151ee83836ca1050ede3b3aadf155/joblib-1.6.0-py3-none-any.whl
@@ -10306,14 +10306,14 @@ packages:
   run_exports: {}
   size: 81929
   timestamp: 1769286011762
-- conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.10-pyhd8ed1ab_0.conda
-  sha256: fb03ebee0108f748bad9b308e4b8ae77f3c3caacc9c7d1dfd71c42b038b8385c
-  md5: 19d4fc2c231fca2b7b7e30ffd84b9fd0
+- conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-tiled-plugins-2.0.11-pyhd8ed1ab_0.conda
+  sha256: b2ba766ffabbc582d2835dbd0969c7427f4c64be93be1bdb090403c3bb7b4d69
+  md5: 19b1b8e434e70bc5ebda2779399eb4b1
   depends:
   - dask-core
   - event-model
   - mongoquery
-  - python >=3.10
+  - python >=3.11
   - pytz
   - tiled-client >=0.2.0
   - tzlocal
@@ -10321,8 +10321,8 @@ packages:
   license_family: BSD
   purls: []
   run_exports: {}
-  size: 59482
-  timestamp: 1788547840266
+  size: 59790
+  timestamp: 1788997472139
 - conda: https://conda.anaconda.org/conda-forge/noarch/bluesky-widgets-0.0.18-pyhd8ed1ab_0.conda
   sha256: 7c6fda08215f94b9e4cc381f24fe302247a51f84b08161c018ce7c987862b31c
   md5: 50d3ef36a8eb006de8f4642b7bdd5317
@@ -13823,7 +13823,7 @@ packages:
   - scipy>=1.14
   - xrt==2.0.0b1
   requires_python: '>=3.11,<3.14'
-- pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#a82fb935b36429325728f5b26310b33f3c184bb7
+- pypi: git+https://github.com/thopkins32/bluesky-tiled-plugins.git?rev=tiled-ws-helpers#dcc9a8821c44e814c827c885c3156159acf4f79a
   name: bluesky-tiled-plugins
   version: 0.0.0
   requires_dist:

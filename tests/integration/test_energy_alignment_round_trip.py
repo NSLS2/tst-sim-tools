@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from bluesky import plan_stubs as bps
 from bluesky.run_engine import call_in_bluesky_event_loop
-from bluesky_tiled_plugins import TiledWriter, subscribe_to_stream
+from bluesky_tiled_plugins import TiledWriter, subscribe_to_stream_by_metadata
 from ophyd_async.core import StaticFilenameProvider, StaticPathProvider, callback_on_mock_put, init_devices, set_mock_value
 from tiled import catalog
 from tiled.client import Context, from_context
@@ -207,11 +207,14 @@ def test_tiled_websocket_evaluation_uses_stream_data_before_stop(tmp_path: Path,
         subscribed = threading.Event()
 
         def wrapped_subscribe_to_stream(*args, **kwargs):
-            subscription = subscribe_to_stream(*args, **kwargs)
+            subscription = subscribe_to_stream_by_metadata(*args, **kwargs)
             subscribed.set()
             return subscription
 
-        mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", side_effect=wrapped_subscribe_to_stream)
+        mocker.patch(
+            "tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata",
+            side_effect=wrapped_subscribe_to_stream,
+        )
         evaluator = TiledWebsocketEnergyAlignmentEvaluation(
             client,
             image_key="screen_image",

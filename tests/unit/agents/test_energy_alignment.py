@@ -31,6 +31,7 @@ from tst_sim_tools.agents.energy_alignment import (
     build_re_agent,
 )
 from tst_sim_tools.agents.tiled_queueserver import CORRELATION_UID_KEY, TiledQueueAcquisition
+from tst_sim_tools.analysis.image import analyze_image
 from tst_sim_tools.devices.materials import XRTCrystalSi
 from tst_sim_tools.devices.mirrors import XRTOpticalElement, XRTToroidMirror
 from tst_sim_tools.devices.sources import XRTWiggler
@@ -351,21 +352,28 @@ def test_energy_alignment_evaluation_validates_image_count() -> None:
     assert str(caught.value) == "Expected 4 image(s) from Tiled for 2 suggestion(s) and 2 energy point(s), but got 3"
 
 
-def test_tiled_evaluation_consumes_retained_stream_update(mocker) -> None:
+def test_tiled_evaluation_consumes_retained_stream_update_without_waiting(mocker) -> None:
     run = FakeRun(alignment_images()[:2], ["trial-0"])
     run.metadata["start"][CORRELATION_UID_KEY] = "correlation-uid"
     client = SearchableClient({"run-uid": run})
     subscription = FakeStreamSubscription()
 
-    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, run_filter):
+    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, metadata_filter):
         _ = catalog, stream_name, data_keys, start, max_size
-        assert run_filter(SimpleNamespace(metadata={"start": run.metadata["start"]})) is True
-        assert run_filter(SimpleNamespace(metadata={"start": {}})) is False
+        assert metadata_filter(run.metadata["start"]) is True
+        assert metadata_filter({}) is False
         callback(FakeStreamUpdate("run-uid", alignment_images()[:2], run.metadata["start"]))
         return subscription
 
-    subscribe_to_stream = mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", side_effect=subscribe)
+    subscribe_to_stream = mocker.patch(
+        "tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", side_effect=subscribe
+    )
     evaluator = make_tiled_evaluator(client)
+    wait = mocker.patch.object(
+        evaluator._condition,
+        "wait",
+        side_effect=AssertionError("must not wait when an update is already buffered"),
+    )
     acquisition = TiledQueueAcquisition(correlation_uid="correlation-uid", item_uid="item-uid")
 
     outcomes = evaluator(acquisition, suggestions=[])
@@ -373,6 +381,7 @@ def test_tiled_evaluation_consumes_retained_stream_update(mocker) -> None:
     assert outcomes[0]["_id"] == "trial-0"
     assert acquisition.run_uid == "run-uid"
     assert subscribe_to_stream.call_count == 1
+    wait.assert_not_called()
     assert subscription.disconnected is False
     evaluator.close()
     evaluator.close()
@@ -388,17 +397,19 @@ def test_tiled_evaluation_reuses_persistent_subscription(mocker) -> None:
     subscription = FakeStreamSubscription()
     callbacks = []
 
-    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, run_filter):
+    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, metadata_filter):
         assert catalog is client
         assert stream_name == "primary"
         assert data_keys == "screen_image"
         assert start == 0
         assert max_size == 10_000_000
-        assert run_filter is not None
+        assert metadata_filter is not None
         callbacks.append(callback)
         return subscription
 
-    subscribe_to_stream = mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", side_effect=subscribe)
+    subscribe_to_stream = mocker.patch(
+        "tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", side_effect=subscribe
+    )
     evaluator = make_tiled_evaluator(client)
 
     callbacks[0](FakeStreamUpdate("run-1", alignment_images()[:2], first_run.metadata["start"]))
@@ -414,26 +425,47 @@ def test_tiled_evaluation_reuses_persistent_subscription(mocker) -> None:
     assert subscription.disconnected is True
 
 
-def test_tiled_evaluation_accumulates_physical_stream_updates(mocker) -> None:
+def test_tiled_evaluation_analyzes_images_as_updates_arrive(mocker) -> None:
     run = FakeRun(alignment_images()[:2], ["trial-0"])
     run.metadata["start"][CORRELATION_UID_KEY] = "correlation-uid"
     subscription = FakeStreamSubscription()
     client = SearchableClient({"run-uid": run})
+    callbacks = []
 
-    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, run_filter):
-        _ = catalog, stream_name, data_keys, start, max_size, run_filter
-        callback(FakeStreamUpdate("run-uid", alignment_images()[:1], run.metadata["start"], sequence=1))
-        callback(FakeStreamUpdate("run-uid", alignment_images()[:1], run.metadata["start"], sequence=1))
-        callback(FakeStreamUpdate("run-uid", alignment_images()[1:2], run.metadata["start"], sequence=2))
+    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, metadata_filter):
+        _ = catalog, stream_name, data_keys, start, max_size, metadata_filter
+        callbacks.append(callback)
         return subscription
 
-    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", side_effect=subscribe)
-    evaluator = make_tiled_evaluator(client)
-    acquisition = TiledQueueAcquisition(correlation_uid="correlation-uid", item_uid="item-uid")
+    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", side_effect=subscribe)
+    first_image_analyzed = threading.Event()
+    analyzed_images = 0
 
-    outcomes = evaluator(acquisition, suggestions=[])
+    def analyze(image, *, threshold, blur):
+        nonlocal analyzed_images
+        metrics = analyze_image(image, threshold=threshold, blur=blur)
+        analyzed_images += 1
+        if analyzed_images == 1:
+            first_image_analyzed.set()
+        return metrics
+
+    mocker.patch("tst_sim_tools.agents.energy_alignment.analyze_image", side_effect=analyze)
+    evaluator = make_tiled_evaluator(client, queue_poll_period=10.0)
+    acquisition = TiledQueueAcquisition(correlation_uid="correlation-uid", item_uid="item-uid")
+    results: queue.Queue[list[dict[str, Any]]] = queue.Queue()
+    thread = threading.Thread(target=lambda: results.put(evaluator(acquisition, suggestions=[])), daemon=True)
+    thread.start()
+
+    callbacks[0](FakeStreamUpdate("run-uid", alignment_images()[:1], run.metadata["start"], sequence=1))
+    assert first_image_analyzed.wait(timeout=1)
+    assert results.empty()
+
+    callbacks[0](FakeStreamUpdate("run-uid", alignment_images()[1:2], run.metadata["start"], sequence=2))
+    outcomes = results.get(timeout=1)
+    thread.join(timeout=1)
 
     assert outcomes[0]["_id"] == "trial-0"
+    assert analyzed_images == 2
     assert acquisition.run_uid == "run-uid"
     assert subscription.disconnected is False
     evaluator.close()
@@ -446,13 +478,13 @@ def test_tiled_evaluation_reports_stream_sequence_gap(mocker) -> None:
     client = SearchableClient({"run-uid": run})
     subscription = FakeStreamSubscription()
 
-    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, run_filter):
-        _ = catalog, stream_name, data_keys, start, max_size, run_filter
+    def subscribe(catalog, stream_name, data_keys, callback, *, start, max_size, metadata_filter):
+        _ = catalog, stream_name, data_keys, start, max_size, metadata_filter
         callback(FakeStreamUpdate("run-uid", alignment_images()[:1], run.metadata["start"], sequence=1))
         callback(FakeStreamUpdate("run-uid", alignment_images()[1:2], run.metadata["start"], sequence=3))
         return subscription
 
-    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", side_effect=subscribe)
+    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", side_effect=subscribe)
     evaluator = make_tiled_evaluator(client)
 
     with pytest.raises(RuntimeError, match="expected sequence 2, got 3"):
@@ -475,7 +507,7 @@ def test_tiled_evaluation_propagates_queue_failure_before_run(mocker) -> None:
             }
         ]
     }
-    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", return_value=subscription)
+    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", return_value=subscription)
     evaluator = make_tiled_evaluator(client, re_manager=re_manager)
 
     with pytest.raises(RuntimeError, match="plan preparation failed"):
@@ -488,7 +520,7 @@ def test_tiled_evaluation_propagates_queue_failure_before_run(mocker) -> None:
 
 def test_closing_tiled_evaluation_wakes_waiter(mocker) -> None:
     subscription = FakeStreamSubscription()
-    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream", return_value=subscription)
+    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", return_value=subscription)
     evaluator = make_tiled_evaluator(SearchableClient({}), queue_poll_period=10.0)
     started = threading.Event()
     errors: queue.Queue[BaseException] = queue.Queue()
@@ -598,7 +630,7 @@ def test_build_qs_agent_wires_tiled_websocket_evaluation_and_queue_plan(mocker) 
     agent_type = mocker.patch("tst_sim_tools.agents.energy_alignment.TiledQueueserverAgent", return_value=agent)
     subscription = FakeStreamSubscription()
     subscribe_to_stream = mocker.patch(
-        "tst_sim_tools.agents.energy_alignment.subscribe_to_stream", return_value=subscription
+        "tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", return_value=subscription
     )
 
     result = build_qs_agent(
@@ -657,10 +689,13 @@ def test_build_qs_agent_wires_tiled_websocket_evaluation_and_queue_plan(mocker) 
         "primary",
         "screen_image",
         evaluator._record_update,
+        metadata_filter=mocker.ANY,
         start=7,
         max_size=2048,
-        run_filter=evaluator._is_blop_run,
     )
+    metadata_filter = subscribe_to_stream.call_args.kwargs["metadata_filter"]
+    assert metadata_filter({CORRELATION_UID_KEY: "correlation", "blop_suggestions": []}) is True
+    assert metadata_filter({}) is False
     assert evaluator._updates.maxlen == 17
     assert kwargs["outcome_constraints"] is BMM_ENERGY_ALIGNMENT_OUTCOME_CONSTRAINTS
     assert kwargs["checkpoint_path"] == "/tmp/qs-agent.json"
