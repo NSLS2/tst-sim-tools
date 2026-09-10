@@ -30,6 +30,7 @@ dependencies = [
   "bluesky>=1.15.1",
   "ophyd-async[ca,pva]",
   "blop[cpu,ax,queueserver]",
+  "bluesky-tiled-plugins @ git+https://github.com/thopkins32/bluesky-tiled-plugins.git@tiled-ws-helpers",
   "scipy>=1.14",
   "xrt==2.0.0b1",
 ]
@@ -50,7 +51,6 @@ dev = [
   "pytest-socket>=0.8.1",
   "ruff",
   "tiled[client,server]>=0.2.14",
-  "bluesky-tiled-plugins>=2.0.9",
 ]
 docs = []
 
@@ -84,9 +84,7 @@ typeCheckingMode = "standard"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-config --strict-markers --disable-socket --allow-unix-socket"
-markers = [
-  "integration: local round-trip tests excluded from per-push CI",
-]
+markers = ["integration: local round-trip tests excluded from per-push CI"]
 
 [tool.coverage.paths]
 # Tests are run from installed location, map back to the src directory
@@ -136,6 +134,9 @@ root_package = "tst_sim_tools"
 channels = ["conda-forge"]
 platforms = ["linux-64"]
 
+[tool.pixi.workspace.conda-pypi-map]
+conda-forge = { mapping = { "bluesky-tiled-plugins" = false } }
+
 [tool.pixi.pypi-dependencies]
 tst-sim-tools = { path = ".", editable = true }
 
@@ -155,11 +156,10 @@ hdf5-external-filter-plugins = ">=0.1.0,<0.2"
 blosc-hdf5-plugin = ">=1.0.1,<2"
 databroker = "==2.0.0"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
-bluesky-tiled-plugins = ">=2.0.0"
 ophyd-async = ">=0.20.1,<0.21"
 
-[tool.pixi.feature.startup-git.pypi-dependencies]
-tst-sim-tools = { git = "https://github.com/NSLS2/tst-sim-tools.git", rev = "main" }
+[tool.pixi.feature.startup.pypi-dependencies]
+bluesky-tiled-plugins = { git = "https://github.com/thopkins32/bluesky-tiled-plugins.git", rev = "tiled-ws-helpers" }
 
 [tool.pixi.feature.startup-local.pypi-dependencies]
 tst-sim-tools = { path = ".", editable = true }
@@ -168,6 +168,7 @@ tst-sim-tools = { path = ".", editable = true }
 ipython = "*"
 pyside6 = "*"
 numpy = ">2"
+notebook = ">=7.6.2,<8"
 
 [tool.pixi.feature.qs.dependencies]
 bluesky-queueserver = "*"
@@ -189,11 +190,6 @@ xrt = ">=2.0.0b1"
 [tool.pixi.environments]
 default = { solve-group = "default" }
 ioc = { features = ["ioc"], solve-group = "ioc", no-default-feature = true }
-terminal = { features = [
-  "terminal",
-  "startup",
-  "startup-git",
-], solve-group = "startup-git", no-default-feature = true }
 terminal-local = { features = [
   "terminal",
   "startup",
@@ -218,6 +214,8 @@ start = "TILED=2 ipython -i -m tst_sim_tools.startup"
 
 [tool.pixi.feature.qs.tasks]
 qs-server-local = """
+EPICS_CA_ADDR_LIST=127.0.0.1 \
+EPICS_CA_AUTO_ADDR_LIST=NO \
 start-re-manager \
 --redis-addr localhost:6379 \
 --zmq-control-addr tcp://127.0.0.1:60615 \
@@ -233,4 +231,17 @@ QSERVER_ZMQ_CONTROL_ADDRESS=tcp://localhost:60615 \
 QSERVER_ZMQ_INFO_ADDRESS=tcp://localhost:60625 \
 QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
 uvicorn --host localhost --port 60611 bluesky_httpserver.server:app
+"""
+queue-monitor-local = """
+QSERVER_HTTP_SERVER_API_KEY=secret \
+pixi run -e qs queue-monitor \
+--http-server-uri http://localhost:60611
+"""
+
+[tool.pixi.feature.ioc.tasks]
+bmm-xrt-ioc = """
+python iocs/xrt/xrt_xml_ioc.py \
+--xml iocs/xrt/bmm/bmm.xml \
+--list-pvs \
+--prefix 'XF:31ID1-XRT{BMM:01}'
 """
