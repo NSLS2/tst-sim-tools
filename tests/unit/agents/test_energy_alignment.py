@@ -503,7 +503,7 @@ def test_tiled_evaluation_propagates_queue_failure_before_run(mocker) -> None:
         "items": [
             {
                 "item_uid": "item-uid",
-                "result": {"exit_status": "failed", "reason": "plan preparation failed"},
+                "result": {"exit_status": "failed", "msg": "plan preparation failed"},
             }
         ]
     }
@@ -516,6 +516,28 @@ def test_tiled_evaluation_propagates_queue_failure_before_run(mocker) -> None:
     assert subscription.disconnected is False
     evaluator.close()
     assert subscription.disconnected is True
+
+
+@pytest.mark.parametrize(
+    ("exit_status", "expected_reason"),
+    [
+        ("completed", None),
+        ("failed", "failed: plan message"),
+        ("stopped", "stopped: plan message"),
+        ("aborted", "aborted: plan message"),
+        ("halted", "halted: plan message"),
+        ("unknown", "unknown: plan message"),
+    ],
+)
+def test_tiled_evaluation_interprets_queue_history_exit_status(exit_status, expected_reason, mocker) -> None:
+    subscription = FakeStreamSubscription()
+    mocker.patch("tst_sim_tools.agents.energy_alignment.subscribe_to_stream_by_metadata", return_value=subscription)
+    evaluator = make_tiled_evaluator(SearchableClient({}))
+
+    reason = evaluator._history_incomplete_reason({"result": {"exit_status": exit_status, "msg": "plan message"}})
+
+    assert reason == expected_reason
+    evaluator.close()
 
 
 def test_closing_tiled_evaluation_wakes_waiter(mocker) -> None:

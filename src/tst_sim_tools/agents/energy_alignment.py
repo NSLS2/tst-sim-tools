@@ -305,9 +305,9 @@ class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
         history_item = self._history_item(item_uid)
         if history_item is None:
             raise RuntimeError(f"Queue item {item_uid!r} is no longer queued or running and has no history entry")
-        failure = self._history_failure_reason(history_item)
-        if failure is not None:
-            raise RuntimeError(f"Queue item {item_uid!r} failed before Tiled produced a matching run: {failure}")
+        incomplete_reason = self._history_incomplete_reason(history_item)
+        if incomplete_reason is not None:
+            raise RuntimeError(f"Queue item {item_uid!r} ended before Tiled produced enough data: {incomplete_reason}")
 
     def _history_item(self, item_uid: str) -> Mapping[str, Any] | None:
         if self._re_manager is None:
@@ -318,18 +318,17 @@ class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
                 return item
         return None
 
-    def _history_failure_reason(self, history_item: Mapping[str, Any]) -> str | None:
+    def _history_incomplete_reason(self, history_item: Mapping[str, Any]) -> str | None:
         result = history_item.get("result")
-        if isinstance(result, Mapping):
-            exit_status = result.get("exit_status")
-            if exit_status not in (None, "success"):
-                return str(result.get("reason") or exit_status)
-            if result.get("success") is False:
-                return str(result.get("msg") or result)
-        status = history_item.get("status")
-        if status in {"failed", "aborted", "stopped"}:
-            return str(status)
-        return None
+        if not isinstance(result, Mapping):
+            return "history entry has no result"
+        exit_status = result.get("exit_status")
+        if exit_status == "completed":
+            return None
+        if exit_status is None:
+            return "history result has no exit_status"
+        message = result.get("msg")
+        return f"{exit_status}: {message}" if message else str(exit_status)
 
 
 def build_re_agent(
