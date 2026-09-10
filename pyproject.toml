@@ -84,9 +84,7 @@ typeCheckingMode = "standard"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-config --strict-markers --disable-socket --allow-unix-socket"
-markers = [
-  "integration: local round-trip tests excluded from per-push CI",
-]
+markers = ["integration: local round-trip tests excluded from per-push CI"]
 
 [tool.coverage.paths]
 # Tests are run from installed location, map back to the src directory
@@ -238,4 +236,12 @@ QSERVER_ZMQ_CONTROL_ADDRESS=tcp://localhost:60615 \
 QSERVER_ZMQ_INFO_ADDRESS=tcp://localhost:60625 \
 QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
 uvicorn --host localhost --port 60611 bluesky_httpserver.server:app
+"""
+
+[tool.pixi.feature.ioc.tasks]
+bmm-xrt-ioc = """
+python iocs/xrt/xrt_xml_ioc.py \
+--xml iocs/xrt/bmm/bmm.xml \
+--list-pvs \
+--prefix 'XF:31ID1-XRT{BMM:01}'
 """
