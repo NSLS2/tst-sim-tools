@@ -1,6 +1,8 @@
 """Blop agent for energy dependent alignment."""
 
+import threading
 import time
+from collections import deque
 from collections.abc import Hashable, Mapping, Sequence
 from functools import partial
 from typing import Any, cast
@@ -8,17 +10,17 @@ from typing import Any, cast
 import numpy as np
 from ax.api.protocols import IMetric
 from blop.ax import Agent, Objective, OutcomeConstraint, RangeDOF
-from blop.ax.queueserver_agent import QueueserverAgent
 from blop.protocols import AcquisitionPlan, EvaluationFunction
-from bluesky.callbacks.zmq import RemoteDispatcher
 from bluesky.protocols import Readable
 from bluesky_queueserver_api.http import REManagerAPI
+from bluesky_tiled_plugins import BlueskyStreamUpdate, subscribe_to_stream_by_metadata
 
-from ..analysis.image import analyze_energy_scan, image_series
+from ..analysis.image import analyze_image, image_series
 from ..devices.materials import XRTCrystalSi
 from ..devices.mirrors import XRTOpticalElement, XRTToroidMirror
 from ..devices.sources import XRTWiggler
 from ..plans.bmm import acquire_with_energy_scan
+from .tiled_queueserver import CORRELATION_UID_KEY, TiledQueueAcquisition, TiledQueueserverAgent
 
 ALIGNMENT_SCORE = "alignment_score"
 CENTROID_RMS_ERROR = "centroid_rms_error"
@@ -65,6 +67,7 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         energies: Sequence[float],
         threshold: float = DEFAULT_IMAGE_THRESHOLD,
         blur: float = DEFAULT_IMAGE_BLUR,
+        image_poll_period: float = CATALOG_POLL_INTERVAL,
     ) -> None:
         self._client = tiled_client
         self._image_key = image_key
@@ -74,6 +77,10 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
             raise ValueError("Expected at least one energy for energy alignment evaluation")
         self._threshold = threshold
         self._blur = blur
+        self._image_poll_period = image_poll_period
+
+    def _before_image_retry(self, uid: Hashable) -> None:
+        return
 
     def _poll_for_run_images(self, uid: Hashable) -> tuple[Any, np.ndarray]:
         deadline = time.monotonic() + CATALOG_POLL_TIMEOUT
@@ -92,18 +99,31 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
                     raise TimeoutError(
                         f"Timed out after {CATALOG_POLL_TIMEOUT:g} seconds waiting for {waiting_for}"
                     ) from error
-                time.sleep(CATALOG_POLL_INTERVAL)
+                self._before_image_retry(uid)
+                time.sleep(self._image_poll_period)
 
-    def __call__(self, uid: Hashable, suggestions: Sequence[Mapping]) -> list[dict]:
+    def _evaluate_run(self, uid: Hashable, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         run, images = self._poll_for_run_images(uid)
-        image_stack = image_series(images)
-        suggestion_ids = [suggestion["_id"] for suggestion in run.metadata["start"]["blop_suggestions"]]
+        return self._evaluate_images(run.metadata["start"], images)
+
+    def _evaluate_images(self, start_document: Mapping[str, Any], images: Any) -> list[dict[str, Any]]:
+        return self._evaluate_image_metrics(start_document, self._analyze_images(images))
+
+    def _analyze_images(self, images: Any) -> list[dict[str, float]]:
+        return [analyze_image(frame, threshold=self._threshold, blur=self._blur) for frame in image_series(images)]
+
+    def _evaluate_image_metrics(
+        self,
+        start_document: Mapping[str, Any],
+        image_metrics: Sequence[Mapping[str, float]],
+    ) -> list[dict[str, Any]]:
+        suggestion_ids = self._suggestion_ids(start_document)
         n_energies = self._energies.size
         expected_images = len(suggestion_ids) * n_energies
-        if image_stack.shape[0] != expected_images:
+        if len(image_metrics) != expected_images:
             raise ValueError(
                 f"Expected {expected_images} image(s) from Tiled for {len(suggestion_ids)} suggestion(s) "
-                f"and {n_energies} energy point(s), but got {image_stack.shape[0]}"
+                f"and {n_energies} energy point(s), but got {len(image_metrics)}"
             )
 
         outcomes = []
@@ -111,23 +131,20 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
         for idx, sid in enumerate(suggestion_ids):
             start = idx * n_energies
             stop = start + n_energies
-            suggestion_stack = image_stack[start:stop]
-            summary = analyze_energy_scan(
-                suggestion_stack,
-                energies=self._energies,
-                plot=False,
-                threshold=self._threshold,
-                blur=self._blur,
-            )
-            x_error = summary["x_centroid"] - target_x
-            y_error = summary["y_centroid"] - target_y
+            suggestion_metrics = image_metrics[start:stop]
+            x_centroid = np.array([metrics["x_centroid"] for metrics in suggestion_metrics], dtype=float)
+            y_centroid = np.array([metrics["y_centroid"] for metrics in suggestion_metrics], dtype=float)
+            fwhm_values = np.array([metrics["fwhm_px"] for metrics in suggestion_metrics], dtype=float)
+            intensity = np.array([metrics["total"] for metrics in suggestion_metrics], dtype=float)
+            x_error = x_centroid - target_x
+            y_error = y_centroid - target_y
             centroid_error = np.hypot(x_error, y_error)
             centroid_rms_error = float(np.sqrt(np.mean(centroid_error**2)))
             max_centroid_error = float(np.max(centroid_error))
-            fwhm = float(np.mean(summary["fwhm_px"]))
-            max_fwhm = float(np.max(summary["fwhm_px"]))
-            min_intensity = float(np.min(summary["total"]))
-            centroid_span = float(np.hypot(np.ptp(summary["x_centroid"]), np.ptp(summary["y_centroid"])))
+            fwhm = float(np.mean(fwhm_values))
+            max_fwhm = float(np.max(fwhm_values))
+            min_intensity = float(np.min(intensity))
+            centroid_span = float(np.hypot(np.ptp(x_centroid), np.ptp(y_centroid)))
             alignment_score = (
                 centroid_rms_error
                 + BMM_ENERGY_ALIGNMENT_MAX_CENTROID_ERROR_WEIGHT * max_centroid_error
@@ -150,6 +167,168 @@ class EnergyAlignmentEvalutation(EvaluationFunction):
                 }
             )
         return outcomes
+
+    def _suggestion_ids(self, start_document: Mapping[str, Any]) -> list[Any]:
+        return [suggestion["_id"] for suggestion in start_document["blop_suggestions"]]
+
+    def __call__(self, uid: Hashable, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        return self._evaluate_run(uid, suggestions)
+
+
+class TiledWebsocketEnergyAlignmentEvaluation(EnergyAlignmentEvalutation):
+    """Wait for correlated Queue Server runs in Tiled websockets before evaluating images."""
+
+    def __init__(
+        self,
+        tiled_client: Any,
+        image_key: str,
+        target_centroid: tuple[float, float],
+        energies: Sequence[float],
+        *,
+        re_manager: REManagerAPI | None = None,
+        threshold: float = DEFAULT_IMAGE_THRESHOLD,
+        blur: float = DEFAULT_IMAGE_BLUR,
+        queue_poll_period: float = 5.0,
+        websocket_start: int | None = 0,
+        websocket_max_size: int = 10_000_000,
+        stream_buffer_size: int = 1024,
+        image_poll_period: float = 0.5,
+    ) -> None:
+        super().__init__(
+            tiled_client,
+            image_key=image_key,
+            target_centroid=target_centroid,
+            energies=energies,
+            threshold=threshold,
+            blur=blur,
+            image_poll_period=image_poll_period,
+        )
+        if stream_buffer_size < 1:
+            raise ValueError("stream_buffer_size must be positive")
+        self._re_manager = re_manager
+        self._queue_poll_period = queue_poll_period
+        self._condition = threading.Condition()
+        self._updates: deque[BlueskyStreamUpdate] = deque(maxlen=stream_buffer_size)
+        self._evaluation_lock = threading.Lock()
+        self._closed = False
+        self._subscription = subscribe_to_stream_by_metadata(
+            self._client,
+            "primary",
+            self._image_key,
+            self._record_update,
+            # TODO: Create some sort of agent UID so multiple agents don't collide
+            metadata_filter=lambda start_document: (
+                CORRELATION_UID_KEY in start_document and "blop_suggestions" in start_document
+            ),
+            start=websocket_start,
+            max_size=websocket_max_size,
+        )
+
+    def __call__(self, uid: Any, suggestions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        if not self._evaluation_lock.acquire(blocking=False):
+            raise RuntimeError("Tiled energy-alignment evaluation is already running")
+        try:
+            acquisition = self._coerce_acquisition(uid)
+            run_uid, start_document, image_metrics = self._wait_for_correlated_metrics(acquisition)
+            acquisition.run_uid = run_uid
+            return self._evaluate_image_metrics(start_document, image_metrics)
+        finally:
+            self._evaluation_lock.release()
+
+    def _coerce_acquisition(self, uid: Any) -> TiledQueueAcquisition:
+        if isinstance(uid, TiledQueueAcquisition):
+            return uid
+        return TiledQueueAcquisition(correlation_uid=str(uid))
+
+    def _record_update(self, update: BlueskyStreamUpdate) -> None:
+        with self._condition:
+            if self._closed:
+                return
+            self._updates.append(update)
+            self._condition.notify_all()
+
+    def close(self) -> None:
+        """Disconnect the persistent Tiled stream subscription."""
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+            self._updates.clear()
+            self._condition.notify_all()
+        self._subscription.disconnect()
+
+    def _wait_for_correlated_metrics(
+        self, acquisition: TiledQueueAcquisition
+    ) -> tuple[str, Mapping[str, Any], list[dict[str, float]]]:
+        metrics_by_run: dict[str, list[dict[str, float]]] = {}
+        last_sequences: dict[str, int] = {}
+        while True:
+            with self._condition:
+                self._condition.wait_for(
+                    lambda: self._closed or bool(self._updates),
+                    timeout=self._queue_poll_period,
+                )
+                if self._closed:
+                    raise RuntimeError("Tiled stream subscription is closed")
+                pending = tuple(self._updates)
+                self._updates.clear()
+            for update in pending:
+                if update.start_document.get(CORRELATION_UID_KEY) != acquisition.correlation_uid:
+                    continue
+                previous_sequence = last_sequences.get(update.run_uid)
+                if previous_sequence is not None:
+                    if update.sequence <= previous_sequence:
+                        continue
+                    if update.sequence != previous_sequence + 1:
+                        raise RuntimeError(
+                            f"Gap in Tiled stream updates for run {update.run_uid!r}: "
+                            f"expected sequence {previous_sequence + 1}, got {update.sequence}"
+                        )
+                metrics = self._analyze_images(update.data())
+                last_sequences[update.run_uid] = update.sequence
+                run_metrics = metrics_by_run.setdefault(update.run_uid, [])
+                run_metrics.extend(metrics)
+                expected_images = len(self._suggestion_ids(update.start_document)) * self._energies.size
+                if len(run_metrics) >= expected_images:
+                    return update.run_uid, update.start_document, run_metrics
+            self._check_queue_state(acquisition)
+
+    def _check_queue_state(self, acquisition: TiledQueueAcquisition) -> None:
+        if self._re_manager is None or acquisition.item_uid is None:
+            return
+        item_uid = acquisition.item_uid
+        queue = self._re_manager.queue_get(reload=True)
+        running = queue.get("running_item") or {}
+        queued = queue.get("items", [])
+        if running.get("item_uid") == item_uid or any(item.get("item_uid") == item_uid for item in queued):
+            return
+        history_item = self._history_item(item_uid)
+        if history_item is None:
+            raise RuntimeError(f"Queue item {item_uid!r} is no longer queued or running and has no history entry")
+        incomplete_reason = self._history_incomplete_reason(history_item)
+        if incomplete_reason is not None:
+            raise RuntimeError(f"Queue item {item_uid!r} ended before Tiled produced enough data: {incomplete_reason}")
+
+    def _history_item(self, item_uid: str) -> Mapping[str, Any] | None:
+        if self._re_manager is None:
+            return None
+        history = self._re_manager.history_get(reload=True)
+        for item in history.get("items", []):
+            if item.get("item_uid") == item_uid:
+                return item
+        return None
+
+    def _history_incomplete_reason(self, history_item: Mapping[str, Any]) -> str | None:
+        result = history_item.get("result")
+        if not isinstance(result, Mapping):
+            return "history entry has no result"
+        exit_status = result.get("exit_status")
+        if exit_status == "completed":
+            return None
+        if exit_status is None:
+            return "history result has no exit_status"
+        message = result.get("msg")
+        return f"{exit_status}: {message}" if message else str(exit_status)
 
 
 def build_re_agent(
@@ -268,8 +447,13 @@ def build_qs_agent(
     threshold: float = DEFAULT_IMAGE_THRESHOLD,
     blur: float = DEFAULT_IMAGE_BLUR,
     checkpoint_path: str = "/tmp/blop/energy-alignment.json",
-) -> QueueserverAgent:
-    """Build a queueserver agent that optimizes detector-screen statistics across an energy range.
+    queue_poll_period: float = 5.0,
+    websocket_start: int | None = 0,
+    websocket_max_size: int = 10_000_000,
+    stream_buffer_size: int = 1024,
+    autostart: bool = True,
+) -> TiledQueueserverAgent:
+    """Build a Queue Server agent that waits for energy-alignment data through Tiled websockets.
 
     Parameters
     ----------
@@ -278,7 +462,7 @@ def build_qs_agent(
     crystal_name
         Device name for silicon crystal material supplying the lattice spacing.
     tiled_client
-        Tiled client used to read back acquired detector images by run UID.
+        Tiled catalog client whose websocket stream receives Bluesky run containers.
     image_key
         Tiled primary-stream image data key.
     target_centroid
@@ -293,11 +477,21 @@ def build_qs_agent(
         Gaussian denoising blur sigma in pixels.
     checkpoint_path
         Ax optimizer checkpoint path.
+    queue_poll_period
+        Seconds between Queue Server health checks while waiting for Tiled websocket updates.
+    websocket_start
+        Tiled stream sequence to replay from. ``0`` asks Tiled for all retained cached events.
+    websocket_max_size
+        Maximum websocket message size in bytes.
+    stream_buffer_size
+        Maximum number of pending physical Tiled updates retained by the persistent subscription.
+    autostart
+        Whether Queue Server should autostart queued plans.
 
     Returns
     -------
-    QueueserverAgent
-        Configured Blop agent for BMM simulator alignment.
+    TiledQueueserverAgent
+        Configured Blop-style agent for BMM simulator alignment without a ZMQ RemoteDispatcher.
     """
     dofs = [
         RangeDOF(
@@ -336,25 +530,29 @@ def build_qs_agent(
         "band": band,
     }
 
-    dispatcher = RemoteDispatcher("127.0.0.1:45105")
-    agent = QueueserverAgent(
+    agent = TiledQueueserverAgent(
         re_manager,
-        dispatcher,
         sensors=dets,
         dofs=dofs,
         objectives=objectives,
-        evaluation_function=EnergyAlignmentEvalutation(
+        evaluation_function=TiledWebsocketEnergyAlignmentEvaluation(
             tiled_client,
             image_key=image_key,
             target_centroid=target_centroid,
             energies=energies,
+            re_manager=re_manager,
             threshold=threshold,
             blur=blur,
+            queue_poll_period=queue_poll_period,
+            websocket_start=websocket_start,
+            websocket_max_size=websocket_max_size,
+            stream_buffer_size=stream_buffer_size,
         ),
         acquisition_plan=acquisition_plan_name,
         acquisition_plan_kwargs=acquisition_plan_kwargs,
         outcome_constraints=outcome_constraints,
         checkpoint_path=checkpoint_path,
+        autostart=autostart,
     )
     agent.ax_client.configure_generation_strategy(
         method="fast",

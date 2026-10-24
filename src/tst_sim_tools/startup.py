@@ -65,7 +65,7 @@ else:
     path = PurePath("/nsls2/data/tst/legacy/")
     path_provider = YMDPathProvider(UUIDFilenameProvider(), path)
 
-tw = TiledWriter(client)
+tw = TiledWriter(client, batch_size=1)
 RE.subscribe(tw)
 
 # publisher = Publisher("127.0.0.1:35091")
