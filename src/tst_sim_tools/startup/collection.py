@@ -58,4 +58,4 @@ RE.subscribe(tw)
 # publisher = Publisher("127.0.0.1:35091")
 # RE.subscribe(publisher)
 
-from .devices import *
+from tst_sim_tools.startup.devices import *
