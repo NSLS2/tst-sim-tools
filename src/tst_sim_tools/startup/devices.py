@@ -1,7 +1,9 @@
+"""Devices startup file. Could be used by ophyd-service."""
+
 from pathlib import PurePath
 
-from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
 import ophyd_async.epics.core._aioca as _ophyd_aioca  # noqa: PLC2701
+from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
 
 from tst_sim_tools.devices.detectors import XRTScreenDetector
 from tst_sim_tools.devices.materials import XRTCrystalSi

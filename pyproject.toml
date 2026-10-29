@@ -123,8 +123,10 @@ convention = "numpy"
 # Remove this line to forbid private member access in tests
 "tests/**/*" = ["SLF001", "S101", "D"]
 "src/tst_sim_tools/startup/collection.py" = [
-  "F401",
-] # Allow unused imports in startup script
+  "F401", # Allow unused imports in startup script
+  "F403", # Allow imports later in file
+  "E402", # Same^
+]
 "src/tst_sim_tools/startup/devices.py" = [
   "F401",
 ] # Allow unused imports in startup script

@@ -5,13 +5,13 @@ from enum import IntEnum
 
 import matplotlib.pyplot as plt
 import numpy as np
+import ophyd_async.epics.core._aioca as _ophyd_aioca  # noqa: PLC2701
 from bluesky import RunEngine
 from bluesky.callbacks.best_effort import BestEffortCallback
 from bluesky.callbacks.zmq import Publisher
 from bluesky.plan_stubs import mv, rd
 from bluesky.plans import count, grid_scan, list_scan, rel_scan, scan
 from bluesky_tiled_plugins import TiledWriter
-import ophyd_async.epics.core._aioca as _ophyd_aioca  # noqa: PLC2701
 
 from tst_sim_tools.plans.bmm import (
     acquire_with_energy_scan,
