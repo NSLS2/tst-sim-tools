@@ -147,7 +147,6 @@ bluesky-base = ">=1.15"
 bluesky-queueserver = "*"
 matplotlib-base = ">=3.9.3,<4"
 networkx = ">=3.4.2"
-nslsii = ">=0.11.4"
 numpy = "*"
 ophyd = ">=1.11.0"
 pyepics = "*"
@@ -159,7 +158,11 @@ blosc-hdf5-plugin = ">=1.0.1,<2"
 databroker = "==2.0.0"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
 bluesky-tiled-plugins = ">=2.0.0"
-ophyd-async = ">=0.20.1,<0.21"
+ophyd-async = ">=0.21.3,<0.22"
+
+# nslsii>=0.12.0 (configure_bluesky_json_logging) is not on conda-forge yet.
+[tool.pixi.feature.startup.pypi-dependencies]
+nslsii = ">=0.12.0"
 
 [tool.pixi.feature.startup-git.pypi-dependencies]
 tst-sim-tools = { git = "https://github.com/NSLS2/tst-sim-tools.git", rev = "main" }

@@ -21,6 +21,8 @@
 - `TILED=0` uses local Tiled storage at `/tmp/tst_testing`; `TILED=1` connects to `https://tiled-staging.nsls2.bnl.gov` at `tst/raw`; `TILED=2` connects to `https://tiled.nsls2.bnl.gov` at `tst/migration`.
 - Keep the `_ophyd_aioca._use_pyepics_context_if_imported = lambda: None` workaround in `startup.py` unless replacing it with a verified fix; the comment says it prevents aioca/ophyd-async timeouts against caproto IOCs after RunEngine imports pyepics.
 - Detector HDF resources are hard-coded to dataset `/entry/data/data`, `join_method="stack"`, and output paths from `YMDPathProvider(UUIDFilenameProvider(), PurePath("/tmp/tst_testing"))`.
+- `startup/collection.py` calls `nslsii.configure_bluesky_json_logging(ipython=get_ipython(), RE=RE)` before devices connect. It writes `<user>-<pid>.log.jsonl` and `<user>-<pid>.documents.jsonl` to `$BLUESKY_JSON_LOG_DIR` (default `/var/log/bluesky`); the directory must already exist, otherwise nslsii emits a `UserWarning` and skips the files.
+- The `startup` feature takes `nslsii>=0.12.0` from PyPI because conda-forge does not have 0.12.0 yet. It requires `ophyd-async>=0.21.3`. Once conda-forge has 0.12.0, move `nslsii` back to `[tool.pixi.feature.startup.dependencies]`.
 
 ## Style And Config
 
