@@ -1,8 +1,5 @@
 """Script to initialize the namespace for running Bluesky."""
 
-import os
-from enum import IntEnum
-
 import matplotlib.pyplot as plt
 import nslsii
 import numpy as np
@@ -20,6 +17,7 @@ from tst_sim_tools.plans.bmm import (
     change_energy_stub,
     scan_energy,
 )
+from tst_sim_tools.startup.storage import TiledChoice, data_directory, tiled_choice
 
 # FIXME:
 # RunEngine imports pyepics. Reusing pyepics' CA context makes
@@ -33,15 +31,6 @@ nslsii.configure_bluesky_json_logging(ipython=get_ipython(), RE=RE)
 
 
 # --- Tiled setup ---
-class TiledChoice(IntEnum):
-    """Choice of tiled server to connect to."""
-
-    SIMPLE = 0
-    STAGING = 1
-    PROD = 2
-
-
-tiled_choice = int(os.getenv("TILED", "0"))
 if tiled_choice != TiledChoice.SIMPLE:
     from tiled.client import from_uri
 
@@ -55,7 +44,7 @@ else:
     from tiled.client import simple
 
     print("Will connect to local tiled...")
-    client = simple(directory="/tmp/tst_testing", readable_storage="/nsls2/data/tst/legacy")
+    client = simple(directory=data_directory, readable_storage=data_directory)
 
 tw = TiledWriter(client)
 RE.subscribe(tw)
