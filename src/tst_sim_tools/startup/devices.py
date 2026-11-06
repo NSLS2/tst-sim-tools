@@ -1,7 +1,5 @@
 """Devices startup file. Could be used by ophyd-service."""
 
-from pathlib import PurePath
-
 import ophyd_async.epics.core._aioca as _ophyd_aioca  # noqa: PLC2701
 from ophyd_async.core import UUIDFilenameProvider, YMDPathProvider, init_devices
 
@@ -10,6 +8,7 @@ from tst_sim_tools.devices.materials import XRTCrystalSi
 from tst_sim_tools.devices.mirrors import XRTOpticalElement, XRTParabolicalMirror, XRTToroidMirror
 from tst_sim_tools.devices.slits import XRTRectangularAperature
 from tst_sim_tools.devices.sources import XRTWiggler
+from tst_sim_tools.startup.storage import data_directory
 
 # FIXME:
 # RunEngine imports pyepics. Reusing pyepics' CA context makes
@@ -17,8 +16,7 @@ from tst_sim_tools.devices.sources import XRTWiggler
 _ophyd_aioca._use_pyepics_context_if_imported = lambda: None  # noqa: SLF001
 
 
-path = PurePath("/nsls2/data/tst/legacy/")
-path_provider = YMDPathProvider(UUIDFilenameProvider(), path)
+path_provider = YMDPathProvider(UUIDFilenameProvider(), data_directory)
 # --- BMM XRT Sim ---
 with init_devices():
     si111 = XRTCrystalSi(
