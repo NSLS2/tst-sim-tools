@@ -9,12 +9,11 @@ authors = [
 ]
 description = "Tools for NSLS-II TST beamline's simulated endstation"
 readme = "README.md"
-license.file = "LICENSE"
+license = "BSD-3-Clause"
 requires-python = ">=3.11,<3.14"
 classifiers = [
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: BSD License",
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
@@ -28,7 +27,10 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
   "bluesky>=1.15.1",
-  "ophyd-async[ca,pva]",
+  "tiled[client]",
+  "bluesky-tiled-plugins",
+  "ophyd-async[ca, pva, sim]",
+  "nslsii",
   "blop[cpu,ax,queueserver]",
   "scipy>=1.14",
   "xrt==2.0.0b1",
@@ -37,22 +39,33 @@ dependencies = [
 [dependency-groups]
 dev = [
   "h5py",
-  "ophyd-async[ca,sim]",
   "import-linter",
+  "mdformat",
+  "mdformat-frontmatter",
+  "nbstripout",
   "numpydoc",
   "pipdeptree",
   "pre-commit",
+  "pre-commit-hooks",
   "pyright",
   "pytest",
   "pytest-asyncio",
   "pytest-cov",
   "pytest-mock",
   "pytest-socket>=0.8.1",
+  "pytest-timeout",
   "ruff",
-  "tiled[client,server]>=0.2.14",
-  "bluesky-tiled-plugins>=2.0.9",
+  "tiled[client,server]",
 ]
-docs = []
+docs = [
+  "pydata-sphinx-theme>=0.12",
+  "myst-parser",
+  "sphinx-autobuild",
+  "sphinx-autodoc2",
+  "sphinxcontrib-mermaid",
+  "sphinx-copybutton",
+  "sphinx-design",
+]
 
 [project.urls]
 Homepage = "https://github.com/NSLS2/tst-sim-tools"
@@ -60,183 +73,114 @@ Issues = "https://github.com/NSLS2/tst-sim-tools/issues"
 Discussions = "https://github.com/NSLS2/tst-sim-tools/discussions"
 Changelog = "https://github.com/NSLS2/tst-sim-tools/releases"
 
-[tool.hatch]
-version.source = "vcs"
-
-[tool.hatch.build]
-artifacts = ["src/tst_sim_tools/_version.py"]
-
-[tool.hatch.build.targets.wheel]
-sources = ["src"]
-
-[tool.hatch.build.hooks.vcs]
-version-file = "src/tst_sim_tools/_version.py"
-
-[tool.hatch.version.raw-options]
-local_scheme = "no-local-version"
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.build]
+artifacts = ["src/tst_sim_tools/_version.py"]
+
+[tool.hatch.version.raw-options]
+fallback_version = "0.0.0"
+local_scheme = "no-local-version"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/tst_sim_tools/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tst_sim_tools"]
+
 [tool.pyright]
 typeCheckingMode = "standard"
+# The standalone caproto IOC runs in the ioc environment and predates type checking
+ignore = ["iocs"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--strict-config --strict-markers --disable-socket --allow-unix-socket"
+# Run pytest with all our checkers, and don't spam us with massive tracebacks on error
+addopts = """
+    --tb=native -vv --strict-config --strict-markers --doctest-modules
+    --doctest-glob="*.rst" --doctest-glob="*.md"
+    --ignore=docs/examples --ignore=docs/_scripts --ignore=src/tst_sim_tools/profiles
+    --ignore=src/tst_sim_tools/startup
+    --disable-socket --allow-unix-socket
+    """
 markers = ["integration: local round-trip tests excluded from per-push CI"]
+# https://iscinumpy.gitlab.io/post/bound-version-constraints/#watch-for-warnings
+filterwarnings = [
+    "error",
+    "ignore:tagMap is deprecated:DeprecationWarning:ldap3",
+    "ignore:typeMap is deprecated:DeprecationWarning:ldap3",
+    # Raised while importing blop's Ax/BoTorch stack
+    'ignore:`torch\.jit\.script` is deprecated:FutureWarning',
+    'ignore:ax\.service\.\S+ has been moved to:DeprecationWarning',
+]
+# Doctest python code in docs, python code in src docstrings, test functions in tests
+testpaths = "docs src tests"
+log_format = "%(asctime)s,%(msecs)03d %(levelname)s (%(threadName)s) %(message)s"
+log_date_format = "%H:%M:%S"
+
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+timeout = 60
+
+[tool.coverage.run]
+patch = ["subprocess"]
+# branch = true
 
 [tool.coverage.paths]
 # Tests are run from installed location, map back to the src directory
 source = ["src"]
 
 [tool.ruff]
+target-version = "py311"
 line-length = 125
 lint.select = [
-  "B",       # flake8-bugbear - https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
-  "C4",      # flake8-comprehensions - https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
-  "E",       # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
-  "F",       # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
-  "N",       # pep8-naming - https://docs.astral.sh/ruff/rules/#pep8-naming-n
-  "W",       # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
-  "I",       # isort - https://docs.astral.sh/ruff/rules/#isort-i
-  "UP",      # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
-  "SLF",     # self - https://docs.astral.sh/ruff/settings/#lintflake8-self
-  "PLC2701", # private import - https://docs.astral.sh/ruff/rules/import-private-name/
-  "LOG015",  # root logger call - https://docs.astral.sh/ruff/rules/root-logger-call/
-  "S101",    # assert - https://docs.astral.sh/ruff/rules/assert/
-  "D",       # docstring - https://docs.astral.sh/ruff/rules/#pydocstyle-d
+  "B",       # flake8-bugbear
+  "C4",      # flake8-comprehensions
+  "D",       # pydocstyle
+  "E",       # pycodestyle errors
+  "F",       # Pyflakes
+  "I",       # isort
+  "LOG015",  # root logger calls
+  "N",       # pep8-naming
+  "PLC2701", # private imports
+  "S101",    # assert
+  "SLF",     # private member access
+  "UP",      # pyupgrade
+  "W",       # pycodestyle warnings
 ]
 lint.ignore = [
   "B901", # Return in a generator is needed for plans
-  "D107", # We squash __init__ docstrings into the class docstring
-  "D102", # We don't need to override docstrings that are inherited from abstract methods
+  "D102", # Inherited abstract methods do not need duplicate docstrings.
+  "D107", # Class docstrings document initialization.
 ]
-lint.preview = true # so that preview mode PLC2701 is enabled
+lint.preview = true
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
+[tool.ruff.lint.isort]
+known-first-party = ["tst_sim_tools"]
+
 [tool.ruff.lint.per-file-ignores]
 # By default, private member access is allowed in tests
-# See https://github.com/DiamondLightSource/python-copier-template/issues/154
-# Remove this line to forbid private member access in tests
-"tests/**/*" = ["SLF001", "S101", "D"]
-"src/tst_sim_tools/startup/collection.py" = [
-  "F401", # Allow unused imports in startup script
-  "F403", # Allow imports later in file
-  "E402", # Same^
-]
-"src/tst_sim_tools/startup/devices.py" = [
-  "F401",
-] # Allow unused imports in startup script
+"tests/**/*" = ["D", "S101", "SLF001"]
+# Profiles import names for use in the interactive session
+"src/tst_sim_tools/profiles/**/*" = ["F401"]
+# Startup modules build the interactive and Queue Server namespaces
+"src/tst_sim_tools/startup/collection.py" = ["F401", "F403", "E402"]
+"src/tst_sim_tools/startup/devices.py" = ["F401"]
 
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+# We often shorten "Annotated" to "A" for brevity
+# in ophyd-async declarative style devices
+"typing.Annotated" = "A"
+
+[tool.ruff.lint.pep8-naming]
+# The fixture RE is commonly used in tests
+extend-ignore-names = ["RE"]
 
 [tool.importlinter]
 root_package = "tst_sim_tools"
-
-[tool.pixi.workspace]
-channels = ["conda-forge"]
-platforms = ["linux-64"]
-
-[tool.pixi.pypi-dependencies]
-tst-sim-tools = { path = ".", editable = true }
-
-[tool.pixi.feature.startup.dependencies]
-bluesky-base = ">=1.15"
-bluesky-queueserver = "*"
-matplotlib-base = ">=3.9.3,<4"
-networkx = ">=3.4.2"
-numpy = "*"
-ophyd = ">=1.11.0"
-pyepics = "*"
-python = ">=3.12,<3.13"
-semver = ">=3.0.4,<4"
-tiled-client = ">=0.1.6"
-hdf5-external-filter-plugins = ">=0.1.0,<0.2"
-blosc-hdf5-plugin = ">=1.0.1,<2"
-databroker = "==2.0.0"
-epicscorelibs = ">=7.0.7.99.1.1,<8"
-bluesky-tiled-plugins = ">=2.0.0"
-ophyd-async = ">=0.21.3,<0.22"
-
-# nslsii>=0.12.0 (configure_bluesky_json_logging) is not on conda-forge yet.
-[tool.pixi.feature.startup.pypi-dependencies]
-nslsii = ">=0.12.0"
-
-[tool.pixi.feature.startup-git.pypi-dependencies]
-tst-sim-tools = { git = "https://github.com/NSLS2/tst-sim-tools.git", rev = "main" }
-
-[tool.pixi.feature.startup-local.pypi-dependencies]
-tst-sim-tools = { path = ".", editable = true }
-
-[tool.pixi.feature.terminal.dependencies]
-ipython = "*"
-pyside6 = "*"
-numpy = ">2"
-
-[tool.pixi.feature.qs.dependencies]
-bluesky-queueserver = "*"
-bluesky-httpserver = "*"
-bluesky-widgets = ">=0.0.18,<0.0.19"
-pyside6 = ">=6.11.1,<7"
-qtpy = ">=2.4.3,<3"
-pyqt = ">=5.15.11,<6"
-
-[tool.pixi.feature.ioc.dependencies]
-python = ">=3.11,<3.14"
-caproto = "*"
-numpy = "*"
-h5py = "*"
-
-[tool.pixi.feature.ioc.pypi-dependencies]
-xrt = ">=2.0.0b1"
-
-[tool.pixi.environments]
-default = { solve-group = "default" }
-ioc = { features = ["ioc"], solve-group = "ioc", no-default-feature = true }
-terminal = { features = [
-  "terminal",
-  "startup",
-  "startup-git",
-], solve-group = "startup-git", no-default-feature = true }
-terminal-local = { features = [
-  "terminal",
-  "startup",
-  "startup-local",
-], solve-group = "startup-local", no-default-feature = true }
-qs = { features = [
-  "qs",
-  "startup",
-  "startup-local",
-], solve-group = "startup-local", no-default-feature = true }
-dev = { features = ["dev"], solve-group = "default" }
-docs = { features = ["docs"], solve-group = "default" }
-
-[tool.pixi.feature.dev.tasks]
-test-unit = "pytest tests/unit --cov=tst_sim_tools --cov-report=term-missing"
-test-integration = "pytest -m integration tests/integration"
-
-[tool.pixi.feature.startup-local.tasks]
-start-local = "TILED=0 ipython -i -m tst_sim_tools.startup.collection"
-start-staging = "TILED=1 ipython -i -m tst_sim_tools.startup.collection"
-start = "TILED=2 ipython -i -m tst_sim_tools.startup.collection"
-
-[tool.pixi.feature.qs.tasks]
-qs-server-local = """
-start-re-manager \
---redis-addr localhost:6379 \
---zmq-control-addr tcp://127.0.0.1:60615 \
---zmq-info-addr tcp://127.0.0.1:60625 \
---zmq-publish-console ON \
---startup-script src/tst_sim_tools/startup/collection.py \
---user-group-permissions /tmp/bsqs \
---existing-plans-devices /tmp/bsqs
---device-max-depth 0
-"""
-http-server-local = """
-QSERVER_ZMQ_CONTROL_ADDRESS=tcp://localhost:60615 \
-QSERVER_ZMQ_INFO_ADDRESS=tcp://localhost:60625 \
-QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
-uvicorn --host localhost --port 60611 bluesky_httpserver.server:app
-"""

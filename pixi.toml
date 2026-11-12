@@ -1,0 +1,170 @@
+[workspace]
+channels = ["conda-forge"]
+name = "tst-sim-tools"
+platforms = ["linux-64"]
+version = "0.1.0"
+requires-pixi = ">=0.82.1"
+
+# Skip packages published in the last 7 days to limit exposure to compromised releases
+[workspace.exclude-newer]
+cutoff = "7days"
+
+[workspace.exclude-newer.exemptions]
+# Security floors in [dependencies] may need fixes published within the cooldown
+ca-certificates = "*"
+certifi = "*"
+pip = "*"
+# Packages managed by us or direct collaborators
+bluesky = "*"
+bluesky-base = "*"
+bluesky-tiled-plugins = "*"
+event-model = "*"
+nslsii = "*"
+ophyd = "*"
+ophyd-async = "*"
+redis-json-dict = "*"
+tiled = "*"
+tiled-base = "*"
+tiled-client = "*"
+tiled-server = "*"
+
+[dependencies]
+bluesky = ">=1.16.0,<2"
+bluesky-tiled-plugins = ">=2.0.13,<3"
+ca-certificates = ">=2026.10.23,<2027"
+certifi = ">=2026.10.23,<2027"
+ipython = ">=9.18.1,<10"
+nslsii = ">=0.12.0,<0.13"
+ophyd-async = ">=0.21.4,<0.22"
+pip = ">=26.2.2,<27"
+python = ">=3.11,<3.14"
+redis-json-dict = ">=0.2.2,<0.3"
+tiled-client = ">=0.2.21,<0.3"
+
+[pypi-dependencies]
+tst-sim-tools = { path = ".", editable = true }
+
+# Runtime dependencies of the startup modules in src/tst_sim_tools/startup
+[feature.profile.dependencies]
+blosc-hdf5-plugin = ">=1.0.1,<2"
+bluesky-queueserver = "*"
+databroker = "==2.0.0"
+epicscorelibs = ">=7.0.7.99.1.1,<8"
+hdf5-external-filter-plugins = ">=0.1.0,<0.2"
+matplotlib-base = ">=3.9.3,<4"
+networkx = ">=3.4.2"
+numpy = "*"
+ophyd = ">=1.11.0"
+pyepics = "*"
+semver = ">=3.0.4,<4"
+
+# TILED selects the Tiled server: 0 local (/tmp/tst_testing), 1 tiled-staging, 2 tiled
+[feature.profile.tasks]
+start-local = "TILED=0 ipython -i -m tst_sim_tools.startup.collection"
+start-staging = "TILED=1 ipython -i -m tst_sim_tools.startup.collection"
+start = "TILED=2 ipython -i -m tst_sim_tools.startup.collection"
+
+[feature.qs.dependencies]
+bluesky-widgets = ">=0.0.18,<0.0.19"
+pyqt = ">=5.15.11,<6"
+pyside6 = ">=6.11.1,<7"
+qtpy = ">=2.4.3,<3"
+
+[feature.qs.pypi-dependencies]
+bluesky-httpserver = ">=0.0.14, <0.0.15"
+bluesky-queueserver = ">=0.0.25, <0.0.26"
+bluesky-queueserver-api = ">=0.0.13, <0.0.14"
+
+[feature.qs.tasks]
+qs-server-local = """
+start-re-manager \
+--redis-addr localhost:6379 \
+--zmq-control-addr tcp://127.0.0.1:60615 \
+--zmq-info-addr tcp://127.0.0.1:60625 \
+--zmq-publish-console ON \
+--startup-script src/tst_sim_tools/startup/collection.py \
+--user-group-permissions /tmp/bsqs \
+--existing-plans-devices /tmp/bsqs
+--device-max-depth 0
+"""
+http-server-local = """
+QSERVER_ZMQ_CONTROL_ADDRESS=tcp://localhost:60615 \
+QSERVER_ZMQ_INFO_ADDRESS=tcp://localhost:60625 \
+QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
+uvicorn --host localhost --port 60611 bluesky_httpserver.server:app
+"""
+
+[feature.terminal.dependencies]
+matplotlib = ">=3.11.2,<4"
+nexpy = ">=2.1.0,<3"
+numpy = ">2"
+pyside6 = ">=6.11.3,<7"
+qtpy = ">=2.4.3,<3"
+
+# Simulated XRT beamline IOC (iocs/xrt_xml_ioc.py)
+[feature.ioc.dependencies]
+python = ">=3.11,<3.14"
+caproto = "*"
+numpy = "*"
+h5py = "*"
+
+[feature.ioc.pypi-dependencies]
+xrt = ">=2.0.0b1"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[feature.dev.dependencies]
+copier = ">=9.19.1,<10"
+hatch = ">=1.18.2,<2"
+h5py = "*"
+import-linter = ">=2.15,<3"
+inflection = ">=0.5.1,<0.6"
+mdformat = ">=1.0.0,<2"
+mdformat-frontmatter = ">=2.1.2,<3"
+nbstripout = ">=0.9.1,<0.10"
+numpydoc = "*"
+pipdeptree = "*"
+pre-commit = ">=4.7.0,<5"
+pre-commit-hooks = ">=6.0.0,<7"
+pyright = ">=1.1.414,<2"
+pytest = ">=9.2.0,<10"
+pytest-asyncio = ">=1.4.1.post1,<2"
+pytest-cov = ">=7.1.0,<8"
+pytest-mock = ">=3.17.0,<4"
+pytest-socket = "*"
+pytest-timeout = ">=2.4.0,<3"
+ruff = ">=0.17.3,<0.18"
+tiled-server = ">=0.2.21,<0.3"
+
+[feature.dev.tasks]
+# Integration tests are excluded from per-push CI; they run daily via test-integration
+tests = "pytest -m 'not integration' --cov=src/tst_sim_tools --cov-report=term"
+test-integration = "pytest -m integration tests/integration"
+lint = "pre-commit run --all-files"
+update-template = "copier update --trust ."
+
+[environments]
+# Base environments
+default = { solve-group = "default" }
+dev = { features = ["profile", "terminal", "dev"], solve-group = "default" }
+
+# Profile environments (Python 3.12 matches the beamline deployment)
+terminal = { features = ["profile", "terminal", "py312"], solve-group = "profile" }
+
+# Python version specific environments for CI
+py311 = { features = ["profile", "terminal", "dev", "py311"], solve-group = "py311" }
+py312 = { features = ["profile", "terminal", "dev", "py312"], solve-group = "py312" }
+py313 = { features = ["profile", "terminal", "dev", "py313"], solve-group = "py313" }
+
+# Queueserver environment
+qs = { features = ["profile", "qs", "py312"], solve-group = "qs" }
+
+# Simulated XRT IOC environment, independent of the package
+ioc = { features = ["ioc"], solve-group = "ioc", no-default-feature = true }

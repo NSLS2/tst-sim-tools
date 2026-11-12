@@ -8,6 +8,7 @@ import pytest
 from bluesky import plan_stubs as bps
 from bluesky.run_engine import call_in_bluesky_event_loop
 from bluesky_tiled_plugins import TiledWriter
+from bluesky_tiled_plugins.writing.validator import validate
 from ophyd_async.core import StaticFilenameProvider, StaticPathProvider, callback_on_mock_put, init_devices, set_mock_value
 from tiled import catalog
 from tiled.client import Context, from_context
@@ -47,7 +48,7 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
 
     with Context.from_app(build_app(tiled_catalog)) as context:
         client = from_context(context)
-        writer = TiledWriter(client, batch_size=1, validate=True)
+        writer = TiledWriter(client, batch_size=1)
         writer_subscription = run_engine.subscribe(writer)
         collected, collect = documents
         document_subscription = run_engine.subscribe(collect)
@@ -161,6 +162,8 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
             np.testing.assert_array_equal(stored_dataset[:], expected_images)
 
         stored_run = client[uid]
+        # The in-process server has no remote validation endpoint, so validate client-side
+        assert validate(stored_run, raise_on_error=True)
         stored_images = stored_run["primary"]["screen_image"].read()
         assert stored_images.shape == (2, 5, 5)
         normalized_images = image_series(stored_images)
