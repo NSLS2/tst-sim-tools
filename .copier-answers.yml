@@ -1,0 +1,11 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: bb7c97c
+_src_path: gh:NSLS2/nsls2-tools-template
+author_email: thopkins1@bnl.gov
+author_name: Brookhaven National Laboratory
+copyright_year: '2026'
+github_organization: NSLS2
+package_name: tst_sim_tools
+project_description: Tools for NSLS-II TST beamline's simulated endstation
+project_name: tst-sim-tools
+repository_name: tst-sim-tools

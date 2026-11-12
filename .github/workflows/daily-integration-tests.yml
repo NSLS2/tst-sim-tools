@@ -10,23 +10,21 @@ permissions:
 
 jobs:
   integration:
+    name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install Pixi environment
-        uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e
+      - name: Install pixi environment
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
-          pixi-version: v0.83.0
-          manifest-path: pyproject.toml
+          pixi-version: v0.84.2
           environments: dev
-          locked: true
-          cache: true
 
       - name: Run integration tests
-        run: pixi run -e dev test-integration
+        run: pixi run --as-is -e dev test-integration
