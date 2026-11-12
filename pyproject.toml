@@ -30,7 +30,7 @@ dependencies = [
   "tiled[client]",
   "bluesky-tiled-plugins",
   "ophyd-async[ca, pva, sim]",
-  "nslsii",
+  "nslsii>=0.12.0",
   "blop[cpu,ax,queueserver]",
   "scipy>=1.14",
   "xrt==2.0.0b1",
