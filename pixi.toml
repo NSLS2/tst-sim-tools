@@ -122,7 +122,8 @@ python = ">=3.11,<3.14"
 caproto = "*"
 h5py = "*"
 numpy = "*"
-xrt = ">=2.0.0b1"
+# Matches pyproject.toml; xrt 2.0.0 drops Screen.expose(withHistogram=...), so the IOC loses its histShape PVs
+xrt = "==2.0.0b1"
 
 [feature.py311.dependencies]
 python = "3.11.*"
