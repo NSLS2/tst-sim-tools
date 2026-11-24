@@ -30,7 +30,7 @@ tiled-server = "*"
 
 [dependencies]
 bluesky = ">=1.16.0,<2"
-bluesky-tiled-plugins = ">=2.0.13,<3"
+bluesky-tiled-plugins = ">=2.0.14,<3"
 ca-certificates = ">=2026.10.23,<2027"
 certifi = ">=2026.10.23,<2027"
 ipython = ">=9.18.1,<10"
@@ -71,9 +71,9 @@ pyside6 = ">=6.11.1,<7"
 qtpy = ">=2.4.3,<3"
 
 [feature.qs.pypi-dependencies]
-bluesky-httpserver = ">=0.0.14, <0.0.15"
-bluesky-queueserver = ">=0.0.25, <0.0.26"
-bluesky-queueserver-api = ">=0.0.13, <0.0.14"
+bluesky-httpserver = "*"
+bluesky-queueserver = "*"
+bluesky-queueserver-api = "*"
 
 [feature.qs.tasks]
 qs-server-local = """
