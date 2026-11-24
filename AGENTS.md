@@ -9,7 +9,9 @@
 
 ## Environment And Commands
 
-- Use Pixi as the source of truth: the workspace is `pixi.toml` (not `[tool.pixi]` in `pyproject.toml`); the lockfile is checked in and marked generated/binary in `.gitattributes`. Solves skip packages published in the last 7 days except the `[workspace.exclude-newer.exemptions]`.
+- Use Pixi as the source of truth: the workspace is `pixi.toml` (not `[tool.pixi]` in `pyproject.toml`); the lockfile is checked in and marked generated/binary in `.gitattributes`. Solves skip packages published in the last 7 days except the `[workspace.exclude-newer.exemptions]` (conda) and `[workspace.pypi-exclude-newer.exemptions]` (PyPI).
+- Python packages come from PyPI via `[pypi-dependencies]` (installed by uv). Conda-forge supplies only `python`, `ca-certificates`, and `pyside6` (PyPI PySide6 6.10+ wheels need glibc 2.34). Add new Python deps as PyPI deps, not conda deps.
+- The platform is declared as `linux-64-glibc228` (linux-64 with glibc 2.28, RHEL 8) so uv can select `manylinux_2_28` wheels.
 - Environments: `default` (package only), `dev` (profile + terminal + dev tools), `terminal` (interactive startup, Python 3.12), `qs` (Queue Server, Python 3.12), `py311`/`py312`/`py313` (CI matrix), and `ioc` (XRT IOC, no package install).
 - Dev tasks: `pixi run -e dev lint` (pre-commit: ruff format/check, pyright, import-linter, nbstripout, mdformat), `pixi run -e dev tests` (pytest with coverage, excluding `integration`-marked tests), and `pixi run -e dev test-integration`.
 - Pytest runs doctests over `src` and tests over `tests`, turns warnings into errors, blocks non-Unix sockets via pytest-socket, and ignores `src/tst_sim_tools/startup` because importing it builds the live namespace.

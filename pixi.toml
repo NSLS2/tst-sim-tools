@@ -48,9 +48,14 @@ redis-json-dict = ">=0.2.2,<0.3"
 tiled = { version = ">=0.2.21,<0.3", extras = ["client"] }
 
 # Runtime dependencies of the startup modules in src/tst_sim_tools/startup
+# PyPI packages only pull optional stacks through extras; conda-forge's tiled/databroker bundled them all
 [feature.profile.pypi-dependencies]
+# Publisher in startup/collection.py needs pyzmq
+bluesky = { version = ">=1.16.0,<2", extras = ["zmq"] }
 bluesky-queueserver = "*"
-databroker = "==2.0.0"
+databroker = { version = "==2.0.0", extras = ["all"] }
+# TILED=0 runs tiled.client.simple(), which needs the server stack and format readers
+tiled = { version = ">=0.2.21,<0.3", extras = ["all"] }
 epicscorelibs = ">=7.0.7.99.1.1,<8"
 # Replaces conda-forge's blosc-hdf5-plugin/hdf5-external-filter-plugins; register filters with `import hdf5plugin`
 hdf5plugin = "*"
