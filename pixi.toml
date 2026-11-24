@@ -1,22 +1,29 @@
 [workspace]
 channels = ["conda-forge"]
 name = "tst-sim-tools"
-platforms = ["linux-64"]
+# glibc 2.28 (RHEL 8) lets uv pick manylinux_2_28 wheels, which PySide6 requires
+platforms = [{ name = "linux-64-glibc228", platform = "linux-64", glibc = "2.28" }]
 version = "0.1.0"
 requires-pixi = ">=0.82.1"
+
+# conda-forge only provides the Python interpreter, system certificates, and PySide6.
+# Every other Python package is resolved from PyPI and installed by uv via [pypi-dependencies].
 
 # Skip packages published in the last 7 days to limit exposure to compromised releases
 [workspace.exclude-newer]
 cutoff = "7days"
 
 [workspace.exclude-newer.exemptions]
-# Security floors in [dependencies] may need fixes published within the cooldown
+# Security floor in [dependencies] may need fixes published within the cooldown
 ca-certificates = "*"
+
+# PyPI packages fall back to the conda cutoff above; PyPI exemptions only support "*"
+[workspace.pypi-exclude-newer.exemptions]
+# Security floors may need fixes published within the cooldown
 certifi = "*"
 pip = "*"
 # Packages managed by us or direct collaborators
 bluesky = "*"
-bluesky-base = "*"
 bluesky-tiled-plugins = "*"
 event-model = "*"
 nslsii = "*"
@@ -24,34 +31,30 @@ ophyd = "*"
 ophyd-async = "*"
 redis-json-dict = "*"
 tiled = "*"
-tiled-base = "*"
-tiled-client = "*"
-tiled-server = "*"
 
 [dependencies]
+ca-certificates = ">=2026.10.23,<2027"
+python = ">=3.11,<3.14"
+
+[pypi-dependencies]
+tst-sim-tools = { path = ".", editable = true }
 bluesky = ">=1.16.0,<2"
 bluesky-tiled-plugins = ">=2.0.14,<3"
-ca-certificates = ">=2026.10.23,<2027"
 certifi = ">=2026.10.23,<2027"
 ipython = ">=9.18.1,<10"
 nslsii = ">=0.12.0,<0.13"
 ophyd-async = ">=0.21.4,<0.22"
-pip = ">=26.2.2,<27"
-python = ">=3.11,<3.14"
 redis-json-dict = ">=0.2.2,<0.3"
-tiled-client = ">=0.2.21,<0.3"
-
-[pypi-dependencies]
-tst-sim-tools = { path = ".", editable = true }
+tiled = { version = ">=0.2.21,<0.3", extras = ["client"] }
 
 # Runtime dependencies of the startup modules in src/tst_sim_tools/startup
-[feature.profile.dependencies]
-blosc-hdf5-plugin = ">=1.0.1,<2"
+[feature.profile.pypi-dependencies]
 bluesky-queueserver = "*"
 databroker = "==2.0.0"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
-hdf5-external-filter-plugins = ">=0.1.0,<0.2"
-matplotlib-base = ">=3.9.3,<4"
+# Replaces conda-forge's blosc-hdf5-plugin/hdf5-external-filter-plugins; register filters with `import hdf5plugin`
+hdf5plugin = "*"
+matplotlib = ">=3.9.3,<4"
 networkx = ">=3.4.2"
 numpy = "*"
 ophyd = ">=1.11.0"
@@ -64,16 +67,17 @@ start-local = "TILED=0 ipython -i -m tst_sim_tools.startup.collection"
 start-staging = "TILED=1 ipython -i -m tst_sim_tools.startup.collection"
 start = "TILED=2 ipython -i -m tst_sim_tools.startup.collection"
 
+# PyPI PySide6 >=6.10 wheels need glibc 2.34; conda-forge's build runs on RHEL 8 (glibc 2.28)
 [feature.qs.dependencies]
-bluesky-widgets = ">=0.0.18,<0.0.19"
-pyqt = ">=5.15.11,<6"
 pyside6 = ">=6.11.1,<7"
-qtpy = ">=2.4.3,<3"
 
 [feature.qs.pypi-dependencies]
 bluesky-httpserver = "*"
 bluesky-queueserver = "*"
 bluesky-queueserver-api = "*"
+bluesky-widgets = ">=0.0.18,<0.0.19"
+pyqt5 = ">=5.15.11,<6"
+qtpy = ">=2.4.3,<3"
 
 [feature.qs.tasks]
 qs-server-local = """
@@ -94,21 +98,25 @@ QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=secret \
 uvicorn --host localhost --port 60611 bluesky_httpserver.server:app
 """
 
+# PyPI PySide6 >=6.10 wheels need glibc 2.34; conda-forge's build runs on RHEL 8 (glibc 2.28)
 [feature.terminal.dependencies]
+pyside6 = ">=6.11.3,<7"
+
+[feature.terminal.pypi-dependencies]
 matplotlib = ">=3.11.2,<4"
 nexpy = ">=2.1.0,<3"
 numpy = ">2"
-pyside6 = ">=6.11.3,<7"
 qtpy = ">=2.4.3,<3"
 
 # Simulated XRT beamline IOC (iocs/xrt_xml_ioc.py)
 [feature.ioc.dependencies]
+ca-certificates = ">=2026.10.23,<2027"
 python = ">=3.11,<3.14"
-caproto = "*"
-numpy = "*"
-h5py = "*"
 
 [feature.ioc.pypi-dependencies]
+caproto = "*"
+h5py = "*"
+numpy = "*"
 xrt = ">=2.0.0b1"
 
 [feature.py311.dependencies]
@@ -120,20 +128,24 @@ python = "3.12.*"
 [feature.py313.dependencies]
 python = "3.13.*"
 
-[feature.dev.dependencies]
+[feature.dev.pypi-dependencies]
 copier = ">=9.19.1,<10"
-hatch = ">=1.18.2,<2"
 h5py = "*"
-import-linter = ">=2.15,<3"
+hatch = ">=1.18.2,<2"
+# 2.16 fails when no contracts are configured, and [tool.importlinter] has none yet
+import-linter = ">=2.15,<2.16"
 inflection = ">=0.5.1,<0.6"
 mdformat = ">=1.0.0,<2"
 mdformat-frontmatter = ">=2.1.2,<3"
 nbstripout = ">=0.9.1,<0.10"
 numpydoc = "*"
+# Used by publish-pypi.yml to smoke-install the built wheel
+pip = ">=26.2.2,<27"
 pipdeptree = "*"
 pre-commit = ">=4.7.0,<5"
 pre-commit-hooks = ">=6.0.0,<7"
-pyright = ">=1.1.414,<2"
+# The nodejs extra ships Node as a wheel instead of downloading it at runtime
+pyright = { version = ">=1.1.414,<2", extras = ["nodejs"] }
 pytest = ">=9.2.0,<10"
 pytest-asyncio = ">=1.4.1.post1,<2"
 pytest-cov = ">=7.1.0,<8"
@@ -141,7 +153,7 @@ pytest-mock = ">=3.17.0,<4"
 pytest-socket = "*"
 pytest-timeout = ">=2.4.0,<3"
 ruff = ">=0.17.3,<0.18"
-tiled-server = ">=0.2.21,<0.3"
+tiled = { version = ">=0.2.21,<0.3", extras = ["client", "server"] }
 
 [feature.dev.tasks]
 # Integration tests are excluded from per-push CI; they run daily via test-integration
