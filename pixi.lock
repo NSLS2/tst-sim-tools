@@ -5165,7 +5165,7 @@ packages:
   - blop[ax,cpu,queueserver]
   - bluesky-tiled-plugins
   - bluesky>=1.15.1
-  - nslsii>=0.12.0
+  - nslsii>=0.13.0
   - ophyd-async[ca,pva,sim]
   - scipy>=1.14
   - tiled[client]
