@@ -30,7 +30,7 @@ dependencies = [
   "tiled[client]",
   "bluesky-tiled-plugins",
   "ophyd-async[ca, pva, sim]",
-  "nslsii>=0.12.0",
+  "nslsii>=0.13.0",
   "blop[cpu,ax,queueserver]",
   "scipy>=1.14",
   "xrt==2.0.0b1",
@@ -109,12 +109,12 @@ addopts = """
 markers = ["integration: local round-trip tests excluded from per-push CI"]
 # https://iscinumpy.gitlab.io/post/bound-version-constraints/#watch-for-warnings
 filterwarnings = [
-    "error",
-    "ignore:tagMap is deprecated:DeprecationWarning:ldap3",
-    "ignore:typeMap is deprecated:DeprecationWarning:ldap3",
-    # Raised while importing blop's Ax/BoTorch stack
-    'ignore:`torch\.jit\.script` is deprecated:FutureWarning',
-    'ignore:ax\.service\.\S+ has been moved to:DeprecationWarning',
+  "error",
+  "ignore:tagMap is deprecated:DeprecationWarning:ldap3",
+  "ignore:typeMap is deprecated:DeprecationWarning:ldap3",
+  # Raised while importing blop's Ax/BoTorch stack
+  'ignore:`torch\.jit\.script` is deprecated:FutureWarning',
+  'ignore:ax\.service\.\S+ has been moved to:DeprecationWarning',
 ]
 # Doctest python code in docs, python code in src docstrings, test functions in tests
 testpaths = "docs src tests"
