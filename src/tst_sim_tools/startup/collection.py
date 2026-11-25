@@ -28,6 +28,7 @@ RE = RunEngine({})
 # Before devices connect, so their ophyd-async log records are captured too.
 # Files go to $BLUESKY_JSON_LOG_DIR (default /var/log/bluesky); nslsii warns and skips them if it is unwritable.
 nslsii.configure_bluesky_json_logging(ipython=get_ipython(), RE=RE)
+nslsii.configure_bluesky_telemetry()
 
 
 # --- Tiled setup ---
