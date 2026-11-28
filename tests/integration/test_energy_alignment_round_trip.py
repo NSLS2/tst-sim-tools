@@ -24,19 +24,19 @@ from tst_sim_tools.agents.energy_alignment import (
     MAX_FWHM,
     MIN_INTENSITY,
     VERTICAL_POSITION_ERROR,
-    EnergyAlignmentEvalutation,
+    build_re_agent,
 )
 from tst_sim_tools.analysis.image import image_series
 from tst_sim_tools.devices.detectors import XRTScreenAcquireStatus, XRTScreenDetector
 from tst_sim_tools.devices.materials import XRTCrystalSi
 from tst_sim_tools.devices.mirrors import XRTOpticalElement, XRTToroidMirror
 from tst_sim_tools.devices.sources import XRTWiggler
-from tst_sim_tools.plans.bmm import HC_EV_ANGSTROM, acquire_with_energy_scan
+from tst_sim_tools.plans.bmm import HC_EV_ANGSTROM
 
 pytestmark = pytest.mark.integration
 
 
-def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents, tmp_path: Path) -> None:
+def test_energy_alignment_agent_round_trip_through_hdf_and_tiled(run_engine, documents, tmp_path: Path) -> None:
     catalog_dir = tmp_path / "tiled"
     asset_dir = tmp_path / "assets"
     catalog_dir.mkdir()
@@ -109,27 +109,29 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
             set_mock_value(screen.driver.frames_written, frames_written + 1)
             await screen.driver.acquire_status.set(XRTScreenAcquireStatus.IDLE)
 
-        suggestions = [{"_id": "trial-0", "dcm_c2-roll": 0.0, "m2-yaw": 0.0, "m2-center_x": 0.0}]
+        agent = build_re_agent(
+            [screen],
+            tpw,
+            dcm_c1,
+            dcm_c2,
+            crystal,
+            m2,
+            client,
+            "screen_image",
+            target_centroid=(2.0, 2.0),
+            energies=(7000.0, 7100.0),
+            threshold=0.0,
+            blur=0.0,
+            checkpoint_path=str(tmp_path / "checkpoint.json"),
+        )
         try:
             with callback_on_mock_put(screen.driver.acquire, write_frame):
-                result = run_engine(
-                    acquire_with_energy_scan(
-                        suggestions,
-                        [dcm_c2.roll, m2.yaw, m2.center_x],
-                        [screen],
-                        md={"blop_correlation_uid": "corr-1"},
-                        tpw=tpw,
-                        dcm_c1=dcm_c1,
-                        dcm_c2=dcm_c2,
-                        crystal=crystal,
-                        energies=(7000.0, 7100.0),
-                    )
-                )
+                result = run_engine(agent.sample_suggestions([{"dcm_c2-roll": 0.0, "m2-yaw": 0.0, "m2-center_x": 0.0}]))
         finally:
             run_engine.unsubscribe(writer_subscription)
             run_engine.unsubscribe(document_subscription)
 
-        uid = result.plan_result
+        uid, suggestions, outcomes = result.plan_result
         assert uid == collected["start"][0]["uid"]
         assert len(collected["start"]) == 1
         assert len(collected["descriptor"]) == 1
@@ -138,9 +140,6 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
         assert len(collected["stream_resource"]) == 1
         assert len(collected["stream_datum"]) == 2
         assert collected["stop"][0]["exit_status"] == "success"
-        assert collected["start"][0]["blop_suggestions"] == suggestions
-        assert collected["start"][0]["run_key"] == "default_acquire"
-        assert collected["start"][0]["blop_correlation_uid"] == "corr-1"
         resource = collected["stream_resource"][0]
         assert resource["data_key"] == "screen_image"
         assert resource["mimetype"] == "application/x-hdf5"
@@ -170,16 +169,8 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
         assert normalized_images.shape == (2, 5, 5)
         np.testing.assert_array_equal(normalized_images, expected_images)
 
-        evaluator = EnergyAlignmentEvalutation(
-            client,
-            image_key="screen_image",
-            target_centroid=(2.0, 2.0),
-            energies=(7000.0, 7100.0),
-            threshold=0.0,
-            blur=0.0,
-        )
-        outcome = evaluator(uid, suggestions)[0]
-        assert outcome["_id"] == "trial-0"
+        outcome = outcomes[0]
+        assert outcome["_id"] == suggestions[0]["_id"]
         assert outcome[MIN_INTENSITY] == 20_000.0
         assert outcome[CENTROID_RMS_ERROR] == pytest.approx(math.sqrt(0.5))
         assert outcome[MAX_CENTROID_ERROR] == 1.0
@@ -189,3 +180,6 @@ def test_energy_alignment_round_trip_through_hdf_and_tiled(run_engine, documents
         assert outcome[FWHM] == 1.0
         assert outcome[MAX_FWHM] == 1.0
         assert outcome[ALIGNMENT_SCORE] == pytest.approx(math.sqrt(0.5) + 0.25 + 0.1 + 0.005 + 0.0025)
+        trial = agent.ax_client.summarize().iloc[0]
+        assert trial["trial_status"] == "COMPLETED"
+        assert trial[ALIGNMENT_SCORE] == pytest.approx(outcome[ALIGNMENT_SCORE])

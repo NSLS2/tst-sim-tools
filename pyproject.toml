@@ -31,7 +31,8 @@ dependencies = [
   "bluesky-tiled-plugins",
   "ophyd-async[ca, pva, sim]",
   "nslsii>=0.13.0",
-  "blop[cpu,ax,queueserver]",
+  # Unreleased main: the evaluation helpers and the reworked Queue Server runner are not on PyPI yet
+  "bluesky-adaptive[cpu,ax,queueserver] @ git+https://github.com/bluesky/bluesky-adaptive@main",
   "scipy>=1.14",
   "xrt==2.0.0b1",
 ]
@@ -112,9 +113,11 @@ filterwarnings = [
   "error",
   "ignore:tagMap is deprecated:DeprecationWarning:ldap3",
   "ignore:typeMap is deprecated:DeprecationWarning:ldap3",
-  # Raised while importing blop's Ax/BoTorch stack
+  # Raised while importing bluesky-adaptive's Ax/BoTorch stack
   'ignore:`torch\.jit\.script` is deprecated:FutureWarning',
   'ignore:ax\.service\.\S+ has been moved to:DeprecationWarning',
+  # Raised from Ax's own Client.configure_optimization while building an agent
+  'ignore:add_tracking_metric is deprecated:DeprecationWarning:ax\.',
 ]
 # Doctest python code in docs, python code in src docstrings, test functions in tests
 testpaths = "docs src tests"

@@ -1,5 +1,4 @@
 import math
-from typing import Any
 
 import pytest
 from bluesky import plan_stubs as bps
@@ -10,7 +9,6 @@ from ophyd_async.core import init_devices, set_mock_attr, set_mock_value, soft_s
 from tst_sim_tools.devices.materials import XRTCrystalSi
 from tst_sim_tools.devices.mirrors import XRTOpticalElement
 from tst_sim_tools.devices.sources import XRTWiggler
-from tst_sim_tools.plans import bmm
 from tst_sim_tools.plans.bmm import (
     BMM_BEAM_INCLINATION,
     BMM_DCM_FIXED_EXIT,
@@ -22,7 +20,6 @@ from tst_sim_tools.plans.bmm import (
     dcm_refraction_correction,
     energy_scan_take_reading,
     scan_energy,
-    vendored_default_acquire,
 )
 
 MODE_C_ERROR = "Current XRT model represents BMM Mode C, valid for 6-8 keV focused at XAS. This plan assumes only Mode C."
@@ -243,59 +240,6 @@ def test_energy_scan_take_reading_emits_ordered_events_and_returns_final_reading
     assert result.plan_result["tpw-max_energy"]["value"] == 7100.5
 
 
-def test_vendored_default_acquire_moves_suggestions_and_preserves_metadata(
-    run_engine,
-    documents,
-) -> None:
-    actuator = soft_signal_rw(float, initial_value=0.0, name="actuator")
-    sensor = soft_signal_rw(float, initial_value=5.0, name="sensor")
-    ignored_sensor: Any = object()
-    suggestions = [{"_id": "trial-0", "actuator": 1.0}, {"_id": "trial-1", "actuator": 2.0}]
-    metadata = {"purpose": "unit", "run_key": "caller"}
-    collected, collect = documents
-    run_engine.subscribe(collect)
-
-    result = run_engine(
-        vendored_default_acquire(
-            suggestions,
-            [actuator],
-            [sensor, ignored_sensor],
-            md=metadata,
-        )
-    )
-
-    assert result.plan_result == collected["start"][0]["uid"]
-    assert signal_value(actuator) == 2.0
-    assert collected["start"][0]["blop_suggestions"] == suggestions
-    assert collected["start"][0]["purpose"] == "unit"
-    assert collected["start"][0]["run_key"] == "default_acquire"
-    assert [event["data"]["actuator"] for event in collected["event"]] == [1.0, 2.0]
-    assert [event["data"]["sensor"] for event in collected["event"]] == [5.0, 5.0]
-    assert all(set(event["data"]) == {"actuator", "sensor"} for event in collected["event"])
-
-
-def test_vendored_default_acquire_accepts_no_sensors(run_engine, documents) -> None:
-    actuator = soft_signal_rw(float, initial_value=0.0, name="actuator")
-    collected, collect = documents
-    run_engine.subscribe(collect)
-
-    run_engine(vendored_default_acquire([{"_id": "trial-0", "actuator": 1.0}], [actuator], sensors=None))
-
-    assert set(collected["event"][0]["data"]) == {"actuator"}
-
-
-def test_vendored_default_acquire_missing_actuator_key_fails_before_run_start(run_engine, documents) -> None:
-    actuator = soft_signal_rw(float, initial_value=0.0, name="actuator")
-    collected, collect = documents
-    run_engine.subscribe(collect)
-
-    with pytest.raises(KeyError) as caught:
-        run_engine(vendored_default_acquire([{"wrong": 1.0}], [actuator]))
-
-    assert caught.value.args == ("actuator",)
-    assert collected["start"] == []
-
-
 def test_scan_energy_emits_single_run_and_leaves_final_state(run_engine, documents, bmm_devices) -> None:
     tpw, dcm_c1, dcm_c2, crystal, _ = bmm_devices
     detector = tpw.max_energy
@@ -351,19 +295,17 @@ def test_scan_energy_failure_retains_event_and_unstages(run_engine, documents, b
     assert getattr(detector, "_cache", None) is None
 
 
-def test_acquire_with_energy_scan_orders_suggestions_then_energies(
+def test_acquire_with_energy_scan_groups_energies_by_suggestion_in_acquisition_order(
     run_engine,
     documents,
     bmm_devices,
-    mocker,
 ) -> None:
     tpw, dcm_c1, dcm_c2, crystal, m2 = bmm_devices
+    # Listed far point first: the acquisition visits the point nearer the start position first
     suggestions = [
-        {"_id": "trial-0", "dcm_c2-roll": 0.1, "m2-yaw": 0.2, "m2-center_x": 0.3},
-        {"_id": "trial-1", "dcm_c2-roll": 1.1, "m2-yaw": 1.2, "m2-center_x": 1.3},
+        {"_id": "trial-0", "dcm_c2-roll": 1.1, "m2-yaw": 1.2, "m2-center_x": 1.3},
+        {"_id": "trial-1", "dcm_c2-roll": 0.1, "m2-yaw": 0.2, "m2-center_x": 0.3},
     ]
-    energies = [7000.0, 7100.0]
-    take_reading = mocker.spy(bmm, "energy_scan_take_reading")
     collected, collect = documents
     run_engine.subscribe(collect)
 
@@ -372,23 +314,20 @@ def test_acquire_with_energy_scan_orders_suggestions_then_energies(
             suggestions,
             [dcm_c2.roll, m2.yaw, m2.center_x],
             [tpw.max_energy],
-            md={"blop_correlation_uid": "corr-1"},
             tpw=tpw,
             dcm_c1=dcm_c1,
             dcm_c2=dcm_c2,
             crystal=crystal,
-            energies=energies,
+            energies=[7000.0, 7100.0],
         )
     )
 
     assert result.plan_result == collected["start"][0]["uid"]
-    assert len(collected["event"]) == 4
+    assert collected["start"][0]["bluesky-adaptive"]["acquisition_order"] == ["trial-1", "trial-0"]
     assert [event["data"]["tpw-max_energy"] for event in collected["event"]] == [7000.5, 7100.5, 7000.5, 7100.5]
     assert [event["data"]["dcm_c2-roll"] for event in collected["event"]] == [0.1, 0.1, 1.1, 1.1]
     assert [event["data"]["m2-yaw"] for event in collected["event"]] == [0.2, 0.2, 1.2, 1.2]
     assert [event["data"]["m2-center_x"] for event in collected["event"]] == [0.3, 0.3, 1.3, 1.3]
-    assert collected["start"][0]["blop_correlation_uid"] == "corr-1"
-    assert all(call.kwargs["energies"] == (7000.0, 7100.0) for call in take_reading.call_args_list)
     assert signal_value(tpw.max_energy) == 7100.5
     assert signal_value(dcm_c2.roll) == 1.1
     assert signal_value(m2.yaw) == 1.2

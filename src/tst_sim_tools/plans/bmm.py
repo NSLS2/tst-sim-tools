@@ -9,11 +9,11 @@ import bluesky.plan_stubs as bps
 import bluesky.plans as bp
 import bluesky.preprocessors as bpp
 import numpy as np
-from blop.plans import _unpack_for_list_scan  # noqa
-from blop.protocols import Actuator, Sensor
 from bluesky.plan_stubs import TakeReading
 from bluesky.protocols import Readable, Reading
 from bluesky.utils import MsgGenerator, plan
+from bluesky_adaptive.plans import default_acquire
+from bluesky_adaptive.protocols import Actuator
 
 from ..devices.materials import XRTCrystalSi
 from ..devices.mirrors import XRTOpticalElement
@@ -161,42 +161,6 @@ def energy_scan_take_reading(
     return readings
 
 
-# ============= VENDORED FROM BLOP UNTIL https://github.com/bluesky/blop/issues/358 IS SOLVED ================
-@plan
-def vendored_default_acquire(
-    suggestions: list[dict],
-    actuators: Sequence[Actuator],
-    sensors: Sequence[Sensor] | None = None,
-    *,
-    per_step: bp.PerStep | None = None,
-    md: dict | None = None,
-    **kwargs: Any,
-) -> MsgGenerator[str]:
-    """Vendored blop.plans.default_acquire due to bug."""
-    if sensors is None:
-        sensors = []
-    readables = [s for s in sensors if isinstance(s, Readable)]
-
-    md = md or {}
-    md.update({"blop_suggestions": suggestions, "run_key": "default_acquire"})
-    plan_args = _unpack_for_list_scan(suggestions, actuators)
-    return (
-        yield from bpp.set_run_key_wrapper(
-            bp.list_scan(
-                readables,
-                *plan_args,  # type: ignore[arg-type]
-                per_step=per_step,
-                md=md,
-                **kwargs,
-            ),
-            "default_acquire",
-        )
-    )
-
-
-# ========================================================================================================
-
-
 @plan
 def acquire_with_energy_scan(
     suggestions: list[dict],
@@ -211,7 +175,12 @@ def acquire_with_energy_scan(
     energies: Sequence[float],
     band: float = 1.0,
 ) -> MsgGenerator[str]:
-    """Move to suggestions, then take an energy scan."""
+    """Move to each suggestion, then take an energy scan there.
+
+    Acquires with :func:`bluesky_adaptive.plans.default_acquire`, which may reorder the suggestions and records their
+    IDs in acquisition order as ``start["bluesky-adaptive"]["acquisition_order"]``. Each suggestion contributes
+    ``len(energies)`` consecutive ``"primary"`` events, one per energy.
+    """
     take_reading = cast(
         TakeReading,
         partial(
@@ -225,7 +194,7 @@ def acquire_with_energy_scan(
         ),
     )
     per_step = cast(bp.PerStep, partial(bps.one_nd_step, take_reading=take_reading))
-    return (yield from vendored_default_acquire(suggestions, actuators, sensors, per_step=per_step, md=md))
+    return (yield from default_acquire(suggestions, actuators, sensors, md, per_step=per_step))
 
 
 @plan

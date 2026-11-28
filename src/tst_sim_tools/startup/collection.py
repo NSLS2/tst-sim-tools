@@ -9,6 +9,7 @@ from bluesky.callbacks.best_effort import BestEffortCallback
 from bluesky.callbacks.zmq import Publisher
 from bluesky.plan_stubs import mv, rd
 from bluesky.plans import count, grid_scan, list_scan, rel_scan, scan
+from bluesky_queueserver import is_re_worker_active
 from bluesky_tiled_plugins import TiledWriter
 from IPython import get_ipython
 
@@ -50,7 +51,8 @@ else:
 tw = TiledWriter(client)
 RE.subscribe(tw)
 
-# publisher = Publisher("127.0.0.1:35091")
-# RE.subscribe(publisher)
+# The Queue Server energy alignment agent matches queue items to runs from these documents (pixi run -e qs zmq-proxy-local)
+if is_re_worker_active():
+    RE.subscribe(Publisher("127.0.0.1:35091"))
 
 from tst_sim_tools.startup.devices import *
